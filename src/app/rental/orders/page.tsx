@@ -40,7 +40,7 @@ import {
   type RentalOrderStatus,
 } from "@/lib/rental-data";
 
-export default function RentalOrdersPage() {
+function RentalOrdersContent() {
   const searchParams = useSearchParams();
   const highlightedOrderId = searchParams.get("order");
 
@@ -633,5 +633,19 @@ export default function RentalOrdersPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function RentalOrdersPage() {
+  return (
+    <React.Suspense
+      fallback={
+        <div className="p-8 text-center text-xs text-muted-foreground flex items-center justify-center min-h-[300px]">
+          Loading rental logistics and order dispatch pipeline...
+        </div>
+      }
+    >
+      <RentalOrdersContent />
+    </React.Suspense>
   );
 }
