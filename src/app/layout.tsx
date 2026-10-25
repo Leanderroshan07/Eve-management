@@ -24,6 +24,8 @@ export const metadata: Metadata = {
     "Discover premier event organizer companies, book curated packages, hire specialized catering workforce, and rent event equipment seamlessly.",
 };
 
+import { AppProviders } from "@/components/shared/app-providers";
+
 export default function RootLayout({
   children,
 }: {
@@ -46,7 +48,7 @@ export default function RootLayout({
         <Suspense fallback={null}>
           <LuxuryBackground />
         </Suspense>
-        {children}
+        <AppProviders>{children}</AppProviders>
       </body>
     </html>
   );

@@ -31,6 +31,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatINR, formatDate } from "@/lib/format";
+import { CloudinaryUploader } from "@/components/shared/cloudinary-uploader";
 import {
   getStoredRentalOrders,
   updateRentalOrderStatus,
@@ -57,6 +58,7 @@ export default function RentalOrdersPage() {
     damagePenalty: number;
   }[]>([]);
   const [inspectionNotes, setInspectionNotes] = React.useState("");
+  const [inspectionEvidenceUrl, setInspectionEvidenceUrl] = React.useState("");
 
   React.useEffect(() => {
     const loaded = getStoredRentalOrders();
@@ -507,6 +509,14 @@ export default function RentalOrdersPage() {
                   className="w-full bg-secondary border border-border rounded-lg p-2.5 text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
                 />
               </div>
+
+              {/* Photographic Damage Evidence via Cloudinary */}
+              <CloudinaryUploader
+                value={inspectionEvidenceUrl}
+                onChange={setInspectionEvidenceUrl}
+                label="Digital Inspection Photographic Proof"
+                helperText="Upload photo evidence of item condition upon retrieval via Cloudinary."
+              />
 
               {/* Financial Deposit Breakdown */}
               <div className="p-3.5 rounded-xl bg-secondary/80 border border-border space-y-1.5 text-xs">

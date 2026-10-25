@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence, useScroll } from "motion/react";
 
 import { cn } from "@/lib/utils";
+import { AuthNavControl } from "./auth-nav-control";
 
 export function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
@@ -76,19 +77,9 @@ export function Navbar() {
               </Link>
             </nav>
 
-            {/* Actions */}
+            {/* Actions: Live Auth Control & Role Switcher */}
             <div className="hidden sm:flex items-center gap-2.5">
-              <Link href="/customer/dashboard">
-                <Button variant="outline" size="sm" className="text-xs">
-                  Customer Portal
-                </Button>
-              </Link>
-
-              <Link href="/organizer/dashboard">
-                <Button variant="champagne" size="sm" className="gap-1.5 text-xs">
-                  Organizer Admin <ArrowRight className="h-3.5 w-3.5" />
-                </Button>
-              </Link>
+              <AuthNavControl />
             </div>
 
             {/* Mobile Menu Button */}
@@ -149,12 +140,16 @@ export function Navbar() {
                     Motion System Showcase
                   </a>
                   <div className="pt-3 flex flex-col gap-2">
-                    <Button variant="outline" className="w-full">
-                      Sign In
-                    </Button>
-                    <Button variant="champagne" className="w-full">
-                      Get Started
-                    </Button>
+                    <Link href="/auth/login" onClick={() => setMobileMenuOpen(false)}>
+                      <Button variant="outline" className="w-full">
+                        Sign In & Switch Role
+                      </Button>
+                    </Link>
+                    <Link href="/marketplace" onClick={() => setMobileMenuOpen(false)}>
+                      <Button variant="champagne" className="w-full">
+                        Explore Marketplace
+                      </Button>
+                    </Link>
                   </div>
                 </div>
               </motion.div>

@@ -23,6 +23,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatINR } from "@/lib/format";
+import { CloudinaryUploader } from "@/components/shared/cloudinary-uploader";
 import {
   getStoredRentalProducts,
   addRentalProduct,
@@ -553,17 +554,12 @@ export default function RentalInventoryPage() {
                 </div>
               </div>
 
-              <div className="space-y-1">
-                <label className="font-semibold text-foreground">Image URL</label>
-                <input
-                  type="url"
-                  value={newProduct.imageUrl}
-                  onChange={(e) =>
-                    setNewProduct({ ...newProduct, imageUrl: e.target.value })
-                  }
-                  className="w-full bg-secondary border border-border rounded-lg px-3 py-2 text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-                />
-              </div>
+              <CloudinaryUploader
+                value={newProduct.imageUrl}
+                onChange={(url) => setNewProduct({ ...newProduct, imageUrl: url })}
+                label="Equipment Showcase Photo"
+                helperText="Upload 4K equipment photo via Cloudinary, or pick from curated luxury presets."
+              />
 
               <div className="space-y-1">
                 <label className="font-semibold text-foreground">

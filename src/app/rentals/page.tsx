@@ -26,6 +26,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatINR, formatDate } from "@/lib/format";
+import { AuthNavControl } from "@/components/shared/auth-nav-control";
+import { createLiveRentalOrder } from "@/lib/supabase/db-sync";
 import {
   getStoredRentalProducts,
   getStoredRentalProviders,
@@ -139,6 +141,32 @@ export default function PublicRentalsPage() {
       notes: "White-glove delivery, on-site rigging, and post-event strike requested via public storefront.",
     });
 
+    // Sync order to live Supabase backend
+    createLiveRentalOrder({
+      providerId: selectedProductForQuote.providerId,
+      eventTitle: eventName,
+      venueName: venueName || "Private Luxury Estate",
+      venueCity: venueAddress || "Mumbai",
+      dispatchDate: bookingStartDate,
+      returnDate: bookingEndDate,
+      status: "awaiting_confirmation",
+      lineItems: [
+        {
+          productId: selectedProductForQuote.id,
+          productName: selectedProductForQuote.name,
+          dailyRate: selectedProductForQuote.dailyRate,
+          quantity: bookingQty,
+        },
+      ],
+      totalRentalAmount: baseRentalCost,
+      securityDepositAmount: totalDeposit,
+      logisticsFee: setupFee,
+      customerName: clientName,
+      customerEmail: clientEmail,
+      customerPhone: clientPhone,
+      whiteGloveNotes: "Requested via public storefront",
+    }).catch(console.warn);
+
     setBookingSuccessOrder(order);
   };
 
@@ -178,12 +206,7 @@ export default function PublicRentalsPage() {
           </nav>
 
           <div className="flex items-center gap-2.5">
-            <Link href="/rental/dashboard">
-              <Button variant="champagne" size="sm" className="text-xs gap-1.5 font-semibold">
-                <Boxes className="w-3.5 h-3.5" />
-                <span>Manage Fleet</span>
-              </Button>
-            </Link>
+            <AuthNavControl />
           </div>
         </div>
       </header>

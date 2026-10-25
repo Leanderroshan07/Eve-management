@@ -44,6 +44,7 @@ import {
 } from "@/lib/organizer-data";
 import { AnimatePresence, motion, useScroll } from "motion/react";
 import { ThemeToggle } from "@/components/shared/theme-toggle";
+import { AuthNavControl } from "@/components/shared/auth-nav-control";
 
 export default function MarketplacePage() {
   const [activeTab, setActiveTab] = React.useState<"organizers" | "packages" | "workers" | "rentals">("organizers");
@@ -246,6 +247,7 @@ export default function MarketplacePage() {
                 <span>Rentals</span>
               </Link>
             </div>
+            <AuthNavControl />
           </div>
         </div>
       </header>
