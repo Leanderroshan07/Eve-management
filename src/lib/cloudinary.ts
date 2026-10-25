@@ -51,7 +51,7 @@ export async function uploadToCloudinary(file: File): Promise<CloudinaryUploadRe
   const uploadPreset = env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET;
 
   // Real Cloudinary upload attempt if configured
-  if (cloudName && uploadPreset && cloudName !== "veluxe-luxury-events") {
+  if (cloudName && uploadPreset) {
     try {
       const formData = new FormData();
       formData.append("file", file);
