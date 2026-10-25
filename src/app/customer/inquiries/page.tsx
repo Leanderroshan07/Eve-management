@@ -17,18 +17,17 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatINR } from "@/lib/format";
-import {
-  CURRENT_CUSTOMER,
-  getCustomerInquiries,
-} from "@/lib/customer-data";
+import { useAuth } from "@/lib/supabase/auth-context";
+import { getScopedCustomerInquiries } from "@/lib/user-scoped-data";
 import { CustomerInquiry } from "@/lib/organizer-data";
 
 export default function CustomerInquiriesPage() {
+  const { user } = useAuth();
   const [inquiries, setInquiries] = React.useState<CustomerInquiry[]>([]);
 
   React.useEffect(() => {
-    setInquiries(getCustomerInquiries(CURRENT_CUSTOMER.email));
-  }, []);
+    setInquiries(getScopedCustomerInquiries(user));
+  }, [user]);
 
   return (
     <div className="space-y-6">
@@ -141,6 +140,23 @@ export default function CustomerInquiriesPage() {
             </div>
           </Card>
         ))}
+
+        {inquiries.length === 0 && (
+          <div className="text-center py-16 bg-card/40 rounded-3xl border border-dashed border-border p-8 space-y-3">
+            <FileQuestion className="w-10 h-10 text-muted-foreground mx-auto opacity-40" />
+            <h3 className="font-editorial text-lg font-bold text-foreground">
+              No Quotation Requests Found
+            </h3>
+            <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+              Explore custom packages in the marketplace to submit your first quotation inquiry to royal wedding planners.
+            </p>
+            <Link href="/marketplace">
+              <Button variant="champagne" size="sm" className="text-xs font-semibold mt-2">
+                Explore Marketplace Packages
+              </Button>
+            </Link>
+          </div>
+        )}
       </div>
     </div>
   );

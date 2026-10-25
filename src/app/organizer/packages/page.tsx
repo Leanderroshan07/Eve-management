@@ -7,11 +7,12 @@ import {
   Plus,
   Check,
   Edit3,
-  Eye,
   Trash2,
   Users,
   Sparkles,
   Search,
+  X,
+  UploadCloud,
 } from "lucide-react";
 import { OrganizerHeader } from "@/components/organizer/header";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
@@ -19,22 +20,33 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Dialog } from "@/components/ui/dialog";
-import { SEEDED_PACKAGES, OrganizerPackage } from "@/lib/organizer-data";
+import { OrganizerPackage } from "@/lib/organizer-data";
 import { formatINR } from "@/lib/format";
 import { motion } from "motion/react";
 import { fadeInUp, staggerContainer } from "@/lib/motion";
+import { useAuth } from "@/lib/supabase/auth-context";
+import {
+  getScopedOrganizerPackages,
+  saveScopedOrganizerPackage,
+  deleteScopedOrganizerPackage,
+  isSeededDemoUser,
+} from "@/lib/user-scoped-data";
+import { CloudinaryUploader } from "@/components/shared/cloudinary-uploader";
 
 export default function OrganizerPackagesPage() {
-  const [packages, setPackages] = React.useState<OrganizerPackage[]>(SEEDED_PACKAGES);
+  const { user } = useAuth();
+  const [packages, setPackages] = React.useState<OrganizerPackage[]>([]);
   const [dialogOpen, setDialogOpen] = React.useState(false);
+  const [editingPackage, setEditingPackage] = React.useState<OrganizerPackage | null>(null);
   const [searchQuery, setSearchQuery] = React.useState("");
 
-  // Form states for new package
+  // Form states
   const [newTitle, setNewTitle] = React.useState("");
   const [newTagline, setNewTagline] = React.useState("");
   const [newCategory, setNewCategory] = React.useState("Royal Wedding");
   const [newPrice, setNewPrice] = React.useState("");
   const [newCapacity, setNewCapacity] = React.useState("500 – 1,000 Guests");
+  const [newImageUrl, setNewImageUrl] = React.useState("");
   const [newInclusion, setNewInclusion] = React.useState("");
   const [inclusionsList, setInclusionsList] = React.useState<string[]>([
     "Architectural Floral Mandap Structure",
@@ -42,6 +54,44 @@ export default function OrganizerPackagesPage() {
     "15 Dedicated Hospitality Floor Stewards",
   ]);
   const [formError, setFormError] = React.useState("");
+
+  const loadPackages = React.useCallback(() => {
+    setPackages(getScopedOrganizerPackages(user));
+  }, [user]);
+
+  React.useEffect(() => {
+    loadPackages();
+  }, [loadPackages]);
+
+  const openCreateDialog = () => {
+    setEditingPackage(null);
+    setNewTitle("");
+    setNewTagline("");
+    setNewCategory("Royal Wedding");
+    setNewPrice("");
+    setNewCapacity("500 – 1,000 Guests");
+    setNewImageUrl("https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&w=900&q=80");
+    setInclusionsList([
+      "Architectural Floral Mandap Structure",
+      "Crystal Chandeliers & Amber Spotlights",
+      "15 Dedicated Hospitality Floor Stewards",
+    ]);
+    setFormError("");
+    setDialogOpen(true);
+  };
+
+  const openEditDialog = (pkg: OrganizerPackage) => {
+    setEditingPackage(pkg);
+    setNewTitle(pkg.name);
+    setNewTagline(pkg.tagline || "");
+    setNewCategory(pkg.event_category);
+    setNewPrice(pkg.base_price.toString());
+    setNewCapacity(pkg.guest_capacity);
+    setNewImageUrl(pkg.image_url);
+    setInclusionsList(pkg.inclusions || []);
+    setFormError("");
+    setDialogOpen(true);
+  };
 
   const handleAddInclusion = () => {
     if (!newInclusion.trim()) return;
@@ -53,7 +103,7 @@ export default function OrganizerPackagesPage() {
     setInclusionsList(inclusionsList.filter((_, i) => i !== index));
   };
 
-  const handleCreatePackage = () => {
+  const handleSavePackage = () => {
     if (!newTitle.trim() || !newPrice.trim()) {
       setFormError("Please provide both package title and base price.");
       return;
@@ -64,39 +114,43 @@ export default function OrganizerPackagesPage() {
       return;
     }
 
-    const created: OrganizerPackage = {
-      id: `pkg-${Date.now()}`,
-      organizer_id: "org-vks-001",
+    if (!user) return;
+
+    const pkgToSave: OrganizerPackage = {
+      id: editingPackage ? editingPackage.id : `pkg-${Date.now()}`,
+      organizer_id: user.id,
       name: newTitle,
       tagline: newTagline || "Custom tailored wedding experience",
-      description: "Bespoke package tailored to client specifications.",
+      description: editingPackage?.description || "Bespoke package tailored to client specifications.",
       event_category: newCategory,
       base_price: numPrice,
       currency: "INR",
       guest_capacity: newCapacity,
-      image_url:
-        "https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&w=900&q=80",
+      image_url: newImageUrl || "https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&w=900&q=80",
       inclusions: inclusionsList,
-      items: [],
-      is_published: true,
-      featured: false,
+      items: editingPackage?.items || [],
+      is_published: editingPackage ? editingPackage.is_published : true,
+      featured: editingPackage ? editingPackage.featured : false,
     };
 
-    setPackages([created, ...packages]);
+    saveScopedOrganizerPackage(user, pkgToSave);
+    loadPackages();
     setDialogOpen(false);
-    // Reset form
-    setNewTitle("");
-    setNewTagline("");
-    setNewPrice("");
-    setFormError("");
   };
 
-  const togglePublish = (id: string) => {
-    setPackages(
-      packages.map((pkg) =>
-        pkg.id === id ? { ...pkg, is_published: !pkg.is_published } : pkg
-      )
-    );
+  const handleDeletePackage = (pkgId: string) => {
+    if (!user) return;
+    if (confirm("Are you sure you want to delete this package from your catalog?")) {
+      deleteScopedOrganizerPackage(user, pkgId);
+      loadPackages();
+    }
+  };
+
+  const togglePublish = (pkg: OrganizerPackage) => {
+    if (!user) return;
+    const updated = { ...pkg, is_published: !pkg.is_published };
+    saveScopedOrganizerPackage(user, updated);
+    loadPackages();
   };
 
   const filtered = packages.filter((p) =>
@@ -127,124 +181,160 @@ export default function OrganizerPackagesPage() {
 
           <Button
             variant="champagne"
-            onClick={() => setDialogOpen(true)}
-            className="gap-2 text-xs font-semibold"
+            onClick={openCreateDialog}
+            className="gap-2 text-xs font-semibold cursor-pointer"
           >
             <Plus className="h-4 w-4" /> Create New Package
           </Button>
         </div>
 
         {/* Packages Grid */}
-        <motion.div
-          variants={staggerContainer(0.08)}
-          initial="hidden"
-          animate="visible"
-          className="grid grid-cols-1 md:grid-cols-2 gap-6"
-        >
-          {filtered.map((pkg) => (
-            <motion.div key={pkg.id} variants={fadeInUp}>
-              <Card className="border-border bg-card overflow-hidden flex flex-col h-full hover:border-border/80 transition-all shadow-sm">
-                {/* Package Cover Image */}
-                <div className="relative h-48 w-full bg-slate-900">
-                  <Image
-                    src={pkg.image_url}
-                    alt={pkg.name}
-                    fill
-                    sizes="(max-width: 768px) 100vw, 50vw"
-                    className="object-cover"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/40" />
-                  
-                  {/* Category and Status Badges */}
-                  <div className="absolute top-3 left-3 flex gap-2">
-                    <Badge variant="outline" className="bg-black/60 backdrop-blur border-white/20 text-white text-[11px]">
-                      {pkg.event_category}
-                    </Badge>
-                    {pkg.featured && (
-                      <Badge variant="champagne" className="text-[11px] gap-1">
-                        <Sparkles className="h-3 w-3" /> Featured
+        {filtered.length === 0 ? (
+          <div className="text-center py-16 bg-card/40 rounded-3xl border border-dashed border-border/80 p-8 space-y-3">
+            <PackageIcon className="w-10 h-10 text-muted-foreground mx-auto opacity-40" />
+            <h3 className="font-editorial text-lg font-bold text-foreground">
+              No Packages Found
+            </h3>
+            <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+              {!isSeededDemoUser(user)
+                ? "You haven't created any service packages yet. Click 'Create New Package' to publish your first offering to the marketplace!"
+                : "Try adjusting your search query."}
+            </p>
+            <Button
+              variant="champagne"
+              size="sm"
+              onClick={openCreateDialog}
+              className="text-xs font-semibold mt-2 cursor-pointer"
+            >
+              <Plus className="w-4 h-4 mr-1" /> Publish Your First Package
+            </Button>
+          </div>
+        ) : (
+          <motion.div
+            variants={staggerContainer(0.08)}
+            initial="hidden"
+            animate="visible"
+            className="grid grid-cols-1 md:grid-cols-2 gap-6"
+          >
+            {filtered.map((pkg) => (
+              <motion.div key={pkg.id} variants={fadeInUp}>
+                <Card className="border-border bg-card overflow-hidden flex flex-col h-full hover:border-border/80 transition-all shadow-sm">
+                  {/* Package Cover Image */}
+                  <div className="relative h-48 w-full bg-slate-900">
+                    <Image
+                      src={pkg.image_url}
+                      alt={pkg.name}
+                      fill
+                      sizes="(max-width: 768px) 100vw, 50vw"
+                      className="object-cover"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/40" />
+                    
+                    {/* Category and Status Badges */}
+                    <div className="absolute top-3 left-3 flex gap-2">
+                      <Badge variant="outline" className="bg-black/60 backdrop-blur border-white/20 text-white text-[11px]">
+                        {pkg.event_category}
                       </Badge>
-                    )}
-                  </div>
+                      {pkg.featured && (
+                        <Badge variant="champagne" className="text-[11px] gap-1">
+                          <Sparkles className="h-3 w-3" /> Featured
+                        </Badge>
+                      )}
+                    </div>
 
-                  <div className="absolute bottom-3 right-3">
-                    <button
-                      onClick={() => togglePublish(pkg.id)}
-                      className={`text-[11px] font-semibold px-2.5 py-1 rounded-full cursor-pointer transition-colors ${
-                        pkg.is_published
-                          ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
-                          : "bg-slate-700 text-slate-300"
-                      }`}
-                    >
-                      {pkg.is_published ? "● Live / Published" : "○ Draft"}
-                    </button>
-                  </div>
-                </div>
-
-                <CardHeader className="pb-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <CardTitle className="text-foreground text-lg font-bold">
-                        {pkg.name}
-                      </CardTitle>
-                      <CardDescription className="text-xs text-muted-foreground mt-1 line-clamp-2">
-                        {pkg.description}
-                      </CardDescription>
+                    <div className="absolute bottom-3 right-3">
+                      <button
+                        onClick={() => togglePublish(pkg)}
+                        className={`text-[11px] font-semibold px-2.5 py-1 rounded-full cursor-pointer transition-colors ${
+                          pkg.is_published
+                            ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                            : "bg-slate-700 text-slate-300"
+                        }`}
+                      >
+                        {pkg.is_published ? "● Live / Published" : "○ Draft"}
+                      </button>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-4 pt-3 text-xs text-muted-foreground">
-                    <span className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400 font-semibold text-base">
-                      {formatINR(pkg.base_price)}
-                    </span>
-                    <span className="text-muted-foreground/60">•</span>
-                    <span className="flex items-center gap-1 text-muted-foreground">
-                      <Users className="h-3.5 w-3.5" /> {pkg.guest_capacity}
-                    </span>
-                  </div>
-                </CardHeader>
-
-                <CardContent className="flex-1 space-y-2 pt-0">
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground block mb-2">
-                    Included Services ({pkg.inclusions.length})
-                  </span>
-                  <div className="space-y-1.5">
-                    {pkg.inclusions.slice(0, 4).map((inc, i) => (
-                      <div key={i} className="flex items-start gap-2 text-xs text-foreground/90">
-                        <Check className="h-3.5 w-3.5 text-emerald-500 shrink-0 mt-0.5" />
-                        <span className="line-clamp-1">{inc}</span>
+                  <CardHeader className="pb-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <CardTitle className="text-foreground text-lg font-bold">
+                          {pkg.name}
+                        </CardTitle>
+                        <CardDescription className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                          {pkg.description}
+                        </CardDescription>
                       </div>
-                    ))}
-                    {pkg.inclusions.length > 4 && (
-                      <p className="text-[11px] text-amber-600 dark:text-amber-400 pt-1 font-medium">
-                        +{pkg.inclusions.length - 4} more specialized inclusions
-                      </p>
-                    )}
-                  </div>
-                </CardContent>
+                    </div>
 
-                <CardFooter className="border-t border-border pt-3 flex justify-between">
-                  <span className="text-[11px] text-muted-foreground">
-                    ID: {pkg.id}
-                  </span>
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="sm" className="h-8 px-3 text-xs border-border text-foreground hover:bg-muted">
-                      <Edit3 className="h-3.5 w-3.5 mr-1" /> Edit
-                    </Button>
-                  </div>
-                </CardFooter>
-              </Card>
-            </motion.div>
-          ))}
-        </motion.div>
+                    <div className="flex items-center gap-4 pt-3 text-xs text-muted-foreground">
+                      <span className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400 font-semibold text-base">
+                        {formatINR(pkg.base_price)}
+                      </span>
+                      <span className="text-muted-foreground/60">•</span>
+                      <span className="flex items-center gap-1 text-muted-foreground">
+                        <Users className="h-3.5 w-3.5" /> {pkg.guest_capacity}
+                      </span>
+                    </div>
+                  </CardHeader>
+
+                  <CardContent className="flex-1 space-y-2 pt-0">
+                    <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground block mb-2">
+                      Included Services ({pkg.inclusions.length})
+                    </span>
+                    <div className="space-y-1.5">
+                      {pkg.inclusions.slice(0, 4).map((inc, i) => (
+                        <div key={i} className="flex items-start gap-2 text-xs text-foreground/90">
+                          <Check className="h-3.5 w-3.5 text-emerald-500 shrink-0 mt-0.5" />
+                          <span className="line-clamp-1">{inc}</span>
+                        </div>
+                      ))}
+                      {pkg.inclusions.length > 4 && (
+                        <p className="text-[11px] text-amber-600 dark:text-amber-400 pt-1 font-medium">
+                          +{pkg.inclusions.length - 4} more specialized inclusions
+                        </p>
+                      )}
+                    </div>
+                  </CardContent>
+
+                  <CardFooter className="border-t border-border pt-3 flex justify-between items-center">
+                    <span className="text-[10px] text-muted-foreground font-mono">
+                      ID: {pkg.id.slice(0, 12)}
+                    </span>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => openEditDialog(pkg)}
+                        className="h-8 px-3 text-xs border-border text-foreground hover:bg-muted cursor-pointer"
+                      >
+                        <Edit3 className="h-3.5 w-3.5 mr-1" /> Edit
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDeletePackage(pkg.id)}
+                        className="h-8 px-2 text-xs text-rose-500 hover:bg-rose-500/10 cursor-pointer"
+                        title="Delete Package"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </CardFooter>
+                </Card>
+              </motion.div>
+            ))}
+          </motion.div>
+        )}
       </main>
 
-      {/* Create New Package Dialog */}
+      {/* Create / Edit Package Dialog */}
       <Dialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
-        title="Create New Customizable Package"
-        description="Add a new event tier with price, inclusions, and guest capacity."
+        title={editingPackage ? "Edit Package Details" : "Create New Customizable Package"}
+        description="Update package pricing, guest capacity, inclusions, and showcase photo."
         className="max-w-2xl border-border bg-card text-foreground"
       >
         <div className="space-y-4 py-2 text-xs">
@@ -256,7 +346,7 @@ export default function OrganizerPackagesPage() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="font-medium text-amber-200 block mb-1">
+              <label className="font-semibold text-foreground block mb-1">
                 Package Name *
               </label>
               <Input
@@ -268,7 +358,7 @@ export default function OrganizerPackagesPage() {
             </div>
 
             <div>
-              <label className="font-medium text-amber-200 block mb-1">
+              <label className="font-semibold text-foreground block mb-1">
                 Event Category
               </label>
               <Input
@@ -282,7 +372,7 @@ export default function OrganizerPackagesPage() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="font-medium text-amber-200 block mb-1">
+              <label className="font-semibold text-foreground block mb-1">
                 Base Price (INR ₹) *
               </label>
               <Input
@@ -294,7 +384,7 @@ export default function OrganizerPackagesPage() {
             </div>
 
             <div>
-              <label className="font-medium text-amber-200 block mb-1">
+              <label className="font-semibold text-foreground block mb-1">
                 Guest Capacity
               </label>
               <Input
@@ -307,7 +397,7 @@ export default function OrganizerPackagesPage() {
           </div>
 
           <div>
-            <label className="font-medium text-amber-200 block mb-1">
+            <label className="font-semibold text-foreground block mb-1">
               Tagline / Short Hook
             </label>
             <Input
@@ -318,9 +408,17 @@ export default function OrganizerPackagesPage() {
             />
           </div>
 
+          {/* Cloudinary Showcase Photo */}
+          <CloudinaryUploader
+            value={newImageUrl}
+            onChange={setNewImageUrl}
+            label="Package Showcase Photo"
+            helperText="Upload 4K photo via Cloudinary, or select from curated presets."
+          />
+
           {/* Inclusions Builder */}
           <div>
-            <label className="font-medium text-amber-200 block mb-1">
+            <label className="font-semibold text-foreground block mb-1">
               Included Services & Deliverables
             </label>
             <div className="flex gap-2 mb-2">
@@ -330,7 +428,7 @@ export default function OrganizerPackagesPage() {
                 onChange={(e) => setNewInclusion(e.target.value)}
                 className="glass-field text-foreground"
               />
-              <Button variant="champagne" size="sm" onClick={handleAddInclusion}>
+              <Button variant="champagne" size="sm" onClick={handleAddInclusion} className="cursor-pointer">
                 Add
               </Button>
             </div>
@@ -339,7 +437,7 @@ export default function OrganizerPackagesPage() {
               {inclusionsList.map((inc, i) => (
                 <div
                   key={i}
-                  className="flex items-center justify-between p-2.5 rounded-xl glass-field text-foreground text-xs"
+                  className="flex items-center justify-between p-2 rounded-xl border border-border bg-secondary text-foreground text-xs"
                 >
                   <span className="flex items-center gap-1.5">
                     <Check className="h-3.5 w-3.5 text-emerald-500" /> {inc}
@@ -356,11 +454,11 @@ export default function OrganizerPackagesPage() {
           </div>
 
           <div className="flex justify-end gap-2 pt-4 border-t border-border">
-            <Button variant="outline" size="sm" onClick={() => setDialogOpen(false)}>
+            <Button variant="outline" size="sm" onClick={() => setDialogOpen(false)} className="cursor-pointer">
               Cancel
             </Button>
-            <Button variant="champagne" size="sm" onClick={handleCreatePackage}>
-              Save & Publish Package
+            <Button variant="champagne" size="sm" onClick={handleSavePackage} className="cursor-pointer font-semibold">
+              {editingPackage ? "Save Package Updates" : "Publish Package"}
             </Button>
           </div>
         </div>

@@ -45,8 +45,11 @@ import {
 import { AnimatePresence, motion, useScroll } from "motion/react";
 import { ThemeToggle } from "@/components/shared/theme-toggle";
 import { AuthNavControl } from "@/components/shared/auth-nav-control";
+import { useAuth } from "@/lib/supabase/auth-context";
+import { getAllPublicPackages, addScopedCustomerInquiry } from "@/lib/user-scoped-data";
 
 export default function MarketplacePage() {
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = React.useState<"organizers" | "packages" | "workers" | "rentals">("organizers");
   const [selectedCity, setSelectedCity] = React.useState<string>("all");
   const [searchQuery, setSearchQuery] = React.useState<string>("");
@@ -55,6 +58,7 @@ export default function MarketplacePage() {
   const [customizerOpen, setCustomizerOpen] = React.useState(false);
   const [selectedPackage, setSelectedPackage] = React.useState<OrganizerPackage | null>(null);
   const [selectedAddons, setSelectedAddons] = React.useState<string[]>([]);
+  const [allPackages, setAllPackages] = React.useState<OrganizerPackage[]>([]);
 
   // Quote Form State inside Drawer
   const [formData, setFormData] = React.useState({
@@ -66,6 +70,17 @@ export default function MarketplacePage() {
     venueCity: "Chennai",
     notes: "",
   });
+
+  React.useEffect(() => {
+    setAllPackages(getAllPublicPackages());
+    if (user) {
+      setFormData((prev) => ({
+        ...prev,
+        name: user.name || prev.name,
+        email: user.email || prev.email,
+      }));
+    }
+  }, [user]);
 
   // Scroll detection for upper bar reveal
   const [isScrolled, setIsScrolled] = React.useState(false);
@@ -100,14 +115,14 @@ export default function MarketplacePage() {
 
   // Filtered Packages
   const filteredPackages = React.useMemo(() => {
-    return SEEDED_PACKAGES.filter((pkg) => {
+    return allPackages.filter((pkg) => {
       const matchQuery =
         !searchQuery ||
         pkg.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         pkg.event_category.toLowerCase().includes(searchQuery.toLowerCase());
       return matchQuery;
     });
-  }, [searchQuery]);
+  }, [allPackages, searchQuery]);
 
   // Filtered Workers
   const filteredWorkers = React.useMemo(() => {
@@ -184,7 +199,11 @@ export default function MarketplacePage() {
         package_id: selectedPackage.id,
         created_at: new Date().toISOString(),
       };
-      SEEDED_INQUIRIES.unshift(newInquiry);
+      if (user) {
+        addScopedCustomerInquiry(user, newInquiry);
+      } else {
+        SEEDED_INQUIRIES.unshift(newInquiry);
+      }
       setSubmittedInquiry(newInquiry);
       setIsSubmitting(false);
     }, 600);

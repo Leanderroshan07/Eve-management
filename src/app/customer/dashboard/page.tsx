@@ -17,59 +17,257 @@ import {
   Users,
   Compass,
   Crown,
+  Edit3,
+  PlusCircle,
+  Truck,
+  Building2,
+  DollarSign,
+  X,
+  Check,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { formatINR } from "@/lib/format";
+import { formatINR, formatDate } from "@/lib/format";
+import { useAuth } from "@/lib/supabase/auth-context";
 import {
-  CURRENT_CUSTOMER,
-  getCustomerProposals,
-  getCustomerInquiries,
-  getCustomerBookings,
-} from "@/lib/customer-data";
+  getScopedCustomerInquiries,
+  getScopedCustomerProposals,
+  getScopedCustomerBookings,
+  getScopedCustomerProfile,
+  saveScopedCustomerProfile,
+  addScopedCustomerInquiry,
+  isSeededDemoUser,
+  CustomerEventProfile,
+} from "@/lib/user-scoped-data";
+import { CustomerInquiry } from "@/lib/organizer-data";
 
 export default function CustomerDashboardPage() {
-  const proposals = getCustomerProposals(CURRENT_CUSTOMER.email);
-  const inquiries = getCustomerInquiries(CURRENT_CUSTOMER.email);
-  const bookings = getCustomerBookings(CURRENT_CUSTOMER.name);
+  const { user } = useAuth();
+  const [profile, setProfile] = React.useState<CustomerEventProfile | null>(null);
+  const [inquiries, setInquiries] = React.useState<CustomerInquiry[]>([]);
+  const [proposals, setProposals] = React.useState<any[]>([]);
+  const [bookings, setBookings] = React.useState<any[]>([]);
 
-  // The proposal needing review
+  // Modals
+  const [isEditProfileOpen, setIsEditProfileOpen] = React.useState(false);
+  const [isNewBriefOpen, setIsNewBriefOpen] = React.useState(false);
+
+  // Profile Form state
+  const [profileForm, setProfileForm] = React.useState({
+    name: "",
+    city: "",
+    phone: "",
+    eventDate: "",
+    eventType: "",
+    estimatedBudget: 2500000,
+    guestCount: 500,
+  });
+
+  // New Brief Form state
+  const [briefForm, setBriefForm] = React.useState({
+    event_type: "Grand Palace Wedding",
+    event_date: "2026-11-20",
+    guest_count: 500,
+    estimated_budget: 3000000,
+    location: "Udaipur & Goa",
+    notes: "Requires grand floral mandap, concert line array audio, and 20 floor stewarding staff.",
+  });
+
+  const loadData = React.useCallback(() => {
+    const prof = getScopedCustomerProfile(user);
+    setProfile(prof);
+    setProfileForm({
+      name: prof.name,
+      city: prof.city,
+      phone: prof.phone,
+      eventDate: prof.eventDate,
+      eventType: prof.eventType,
+      estimatedBudget: prof.estimatedBudget,
+      guestCount: prof.guestCount,
+    });
+    setInquiries(getScopedCustomerInquiries(user));
+    setProposals(getScopedCustomerProposals(user));
+    setBookings(getScopedCustomerBookings(user));
+  }, [user]);
+
+  React.useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const handleSaveProfile = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    saveScopedCustomerProfile(user, profileForm);
+    setProfile({ ...profile!, ...profileForm });
+    setIsEditProfileOpen(false);
+  };
+
+  const handleCreateBrief = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    const newInquiry: CustomerInquiry = {
+      id: `inq-${Date.now()}`,
+      inquiry_number: `INQ-2026-${Math.floor(100 + Math.random() * 900)}`,
+      customer_name: profileForm.name || user.name || "Client Host",
+      customer_email: user.email,
+      customer_phone: profileForm.phone || "+91 98000 00000",
+      event_type: briefForm.event_type,
+      event_date: briefForm.event_date,
+      guest_count: briefForm.guest_count,
+      estimated_budget: briefForm.estimated_budget,
+      location: briefForm.location,
+      notes: briefForm.notes,
+      status: "pending",
+      created_at: new Date().toISOString(),
+      source: "Customer Portal Brief",
+    };
+
+    addScopedCustomerInquiry(user, newInquiry);
+    setInquiries([newInquiry, ...inquiries]);
+    setIsNewBriefOpen(false);
+  };
+
   const pendingProposal = proposals.find(
     (p) => p.status === "sent_to_customer" || (!p.customer_accepted && p.organizer_accepted)
   );
+
+  const isNewAccount = !isSeededDemoUser(user) && inquiries.length === 0 && proposals.length === 0;
 
   return (
     <div className="space-y-8">
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="font-editorial text-2xl sm:text-3xl font-bold text-foreground tracking-tight">
-            Client Wedding Overview
-          </h1>
+          <div className="flex items-center gap-2">
+            <h1 className="font-editorial text-2xl sm:text-3xl font-bold text-foreground tracking-tight">
+              {profile ? `${profile.name}'s Celebration Portal` : "Client Wedding Overview"}
+            </h1>
+            {!isSeededDemoUser(user) && (
+              <Badge variant="outline" className="border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-[10px]">
+                New Host Account
+              </Badge>
+            )}
+          </div>
           <p className="text-xs text-muted-foreground mt-1">
-            Track your custom proposals, quotation requests, and confirmed celebration milestones.
+            Track quotation requests, review itemized proposals, and coordinate bespoke event services.
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setIsEditProfileOpen(true)}
+            className="text-xs gap-1.5 cursor-pointer"
+          >
+            <Edit3 className="w-3.5 h-3.5" />
+            <span>Edit Event Preferences</span>
+          </Button>
+
           <Link href="/marketplace">
-            <Button className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs gap-2">
+            <Button variant="champagne" size="sm" className="font-bold text-xs gap-2 cursor-pointer">
               <Compass className="w-4 h-4" />
-              <span>Browse Marketplace</span>
+              <span>Explore Marketplace</span>
             </Button>
           </Link>
         </div>
       </div>
 
-      {/* Prominent Action Required Alert for Proposal Review */}
+      {/* Guided Onboarding & Exploration for New Host Accounts */}
+      {isNewAccount && (
+        <Card className="border border-primary/40 bg-gradient-to-r from-primary/10 via-card to-background p-6 rounded-3xl shadow-xl">
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="h-10 w-10 rounded-2xl bg-primary/20 text-primary flex items-center justify-center border border-primary/30">
+                  <Sparkles className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-editorial text-xl font-bold text-foreground">
+                    Welcome to Veluxe, {user?.name || "Host"}!
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    Your luxury celebration dashboard is ready. Follow these guided steps to design your dream event:
+                  </p>
+                </div>
+              </div>
+
+              <Button
+                variant="champagne"
+                size="sm"
+                onClick={() => setIsNewBriefOpen(true)}
+                className="gap-1.5 text-xs font-semibold cursor-pointer"
+              >
+                <PlusCircle className="w-3.5 h-3.5" />
+                <span>Submit Event Brief</span>
+              </Button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+              {/* Step 1: Organizers */}
+              <Link
+                href="/marketplace?tab=organizers"
+                className="group p-4 rounded-2xl border border-border/80 bg-card/60 hover:border-primary/60 hover:bg-primary/5 transition-all space-y-2 block"
+              >
+                <div className="h-8 w-8 rounded-xl bg-amber-500/15 text-amber-500 flex items-center justify-center">
+                  <Building2 className="w-4 h-4" />
+                </div>
+                <h4 className="font-semibold text-sm text-foreground group-hover:text-primary transition-colors flex items-center justify-between">
+                  <span>1. Discover Organizers</span>
+                  <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+                </h4>
+                <p className="text-xs text-muted-foreground">
+                  Browse verified royal wedding producers in Udaipur, Jaipur, Goa, and Mumbai.
+                </p>
+              </Link>
+
+              {/* Step 2: Rentals */}
+              <Link
+                href="/rentals"
+                className="group p-4 rounded-2xl border border-border/80 bg-card/60 hover:border-primary/60 hover:bg-primary/5 transition-all space-y-2 block"
+              >
+                <div className="h-8 w-8 rounded-xl bg-sky-500/15 text-sky-500 flex items-center justify-center">
+                  <Truck className="w-4 h-4" />
+                </div>
+                <h4 className="font-semibold text-sm text-foreground group-hover:text-primary transition-colors flex items-center justify-between">
+                  <span>2. Rent Staging & AV</span>
+                  <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+                </h4>
+                <p className="text-xs text-muted-foreground">
+                  Rent concert sound arrays, moving head truss lighting, and royal brass mandaps.
+                </p>
+              </Link>
+
+              {/* Step 3: Staff */}
+              <Link
+                href="/marketplace?tab=workers"
+                className="group p-4 rounded-2xl border border-border/80 bg-card/60 hover:border-primary/60 hover:bg-primary/5 transition-all space-y-2 block"
+              >
+                <div className="h-8 w-8 rounded-xl bg-purple-500/15 text-purple-500 flex items-center justify-center">
+                  <Users className="w-4 h-4" />
+                </div>
+                <h4 className="font-semibold text-sm text-foreground group-hover:text-primary transition-colors flex items-center justify-between">
+                  <span>3. Hire VIP Staff</span>
+                  <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+                </h4>
+                <p className="text-xs text-muted-foreground">
+                  Book certified culinary directors, mixologists, and hospitality stewards.
+                </p>
+              </Link>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {/* Prominent Action Required Alert for Proposal Review (if applicable) */}
       {pendingProposal && (
         <Card className="border border-amber-500/40 bg-gradient-to-r from-amber-950/40 via-[#1c0c05]/85 to-[#120601]/90 backdrop-blur-xl shadow-xl">
           <CardContent className="p-6">
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
-                  <Badge variant="warning" className="text-xs font-semibold px-2.5 py-0.5 animate-pulse">
+                  <Badge variant="outline" className="border-amber-400 text-amber-400 text-xs font-semibold px-2.5 py-0.5 animate-pulse">
                     Action Required
                   </Badge>
                   <span className="text-xs text-amber-300 font-mono font-medium">
@@ -82,9 +280,8 @@ export default function CustomerDashboardPage() {
                     Official Proposal Ready for Your Review & Acceptance
                   </h3>
                   <p className="text-xs text-muted-foreground mt-1 max-w-2xl leading-relaxed">
-                    VKS Royal Wedding Planners has drafted your customized itemized proposal for{" "}
-                    <span className="font-semibold text-foreground">{pendingProposal.event_type}</span> at{" "}
-                    <span className="font-semibold text-foreground">{pendingProposal.venue_location}</span> on{" "}
+                    Customized itemized proposal for{" "}
+                    <span className="font-semibold text-foreground">{pendingProposal.event_type}</span> on{" "}
                     <span className="font-semibold text-foreground">{pendingProposal.event_date}</span>.
                   </p>
                 </div>
@@ -94,23 +291,17 @@ export default function CustomerDashboardPage() {
                     Estimated Total:{" "}
                     <strong className="text-amber-400 font-editorial text-sm">
                       {formatINR(pendingProposal.total_amount)}
-                    </strong>{" "}
-                    (incl. 18% GST)
+                    </strong>
                   </span>
                   <span>•</span>
                   <span>Line Items: {pendingProposal.items.length} Included</span>
-                  <span>•</span>
-                  <span className="text-emerald-400 flex items-center gap-1">
-                    <CheckCircle2 className="w-3.5 h-3.5 inline" /> Organizer Signed
-                  </span>
                 </div>
               </div>
 
               <div className="shrink-0 flex items-center gap-3">
                 <Link href={`/customer/proposals?id=${pendingProposal.id}`}>
-                  <Button className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold gap-2 text-xs py-2.5 px-4 shadow-md">
-                    <span>Inspect & Accept Proposal</span>
-                    <ArrowRight className="w-4 h-4" />
+                  <Button variant="champagne" size="sm" className="gap-2 font-bold text-xs">
+                    Review Proposal <ArrowRight className="w-3.5 h-3.5" />
                   </Button>
                 </Link>
               </div>
@@ -119,209 +310,330 @@ export default function CustomerDashboardPage() {
         </Card>
       )}
 
-      {/* Metrics Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="bg-[#1c0c05]/80 border border-amber-500/20 backdrop-blur-xl p-5 shadow-[0_8px_32px_0_rgba(18,7,2,0.45)] hover:border-amber-500/35 transition-all">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-amber-200/70">Proposals to Review</span>
-            <div className="w-8 h-8 rounded-lg bg-amber-500/15 text-amber-400 flex items-center justify-center">
-              <FileSignature className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="mt-3">
-            <span className="font-editorial text-2xl font-bold text-foreground">
-              {proposals.filter((p) => p.status === "sent_to_customer").length}
+      {/* KPI Stats Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card className="p-5 border-border bg-card/70 backdrop-blur-md shadow-xs">
+          <div className="flex items-center justify-between pb-2">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Active Inquiries
             </span>
-            <span className="text-[11px] text-amber-400/80 block mt-0.5">Pending your sign-off</span>
+            <FileQuestion className="h-4 w-4 text-primary" />
           </div>
+          <div className="text-2xl font-bold text-foreground font-editorial">{inquiries.length}</div>
+          <p className="text-[11px] text-muted-foreground mt-1">Pending response from planners</p>
         </Card>
 
-        <Card className="bg-[#1c0c05]/80 border border-amber-500/20 backdrop-blur-xl p-5 shadow-[0_8px_32px_0_rgba(18,7,2,0.45)] hover:border-amber-500/35 transition-all">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-amber-200/70">Active Inquiries</span>
-            <div className="w-8 h-8 rounded-lg bg-blue-500/15 text-blue-400 flex items-center justify-center">
-              <FileQuestion className="w-4 h-4" />
-            </div>
+        <Card className="p-5 border-border bg-card/70 backdrop-blur-md shadow-xs">
+          <div className="flex items-center justify-between pb-2">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Official Proposals
+            </span>
+            <FileSignature className="h-4 w-4 text-primary" />
           </div>
-          <div className="mt-3">
-            <span className="font-editorial text-2xl font-bold text-foreground">{inquiries.length}</span>
-            <span className="text-[11px] text-amber-200/60 block mt-0.5">Under evaluation</span>
-          </div>
+          <div className="text-2xl font-bold text-foreground font-editorial">{proposals.length}</div>
+          <p className="text-[11px] text-muted-foreground mt-1">Ready for contract review</p>
         </Card>
 
-        <Card className="bg-[#1c0c05]/80 border border-amber-500/20 backdrop-blur-xl p-5 shadow-[0_8px_32px_0_rgba(18,7,2,0.45)] hover:border-amber-500/35 transition-all">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-amber-200/70">Confirmed Bookings</span>
-            <div className="w-8 h-8 rounded-lg bg-emerald-500/15 text-emerald-400 flex items-center justify-center">
-              <CalendarCheck2 className="w-4 h-4" />
-            </div>
+        <Card className="p-5 border-border bg-card/70 backdrop-blur-md shadow-xs">
+          <div className="flex items-center justify-between pb-2">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Confirmed Celebrations
+            </span>
+            <CalendarCheck2 className="h-4 w-4 text-emerald-500" />
           </div>
-          <div className="mt-3">
-            <span className="font-editorial text-2xl font-bold text-foreground">{bookings.length}</span>
-            <span className="text-[11px] text-emerald-400/80 block mt-0.5">Mutually confirmed</span>
-          </div>
+          <div className="text-2xl font-bold text-foreground font-editorial">{bookings.length}</div>
+          <p className="text-[11px] text-muted-foreground mt-1">Deposits locked in escrow</p>
         </Card>
 
-        <Card className="bg-[#1c0c05]/80 border border-amber-500/20 backdrop-blur-xl p-5 shadow-[0_8px_32px_0_rgba(18,7,2,0.45)] hover:border-amber-500/35 transition-all">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-amber-200/70">Messages</span>
-            <div className="w-8 h-8 rounded-lg bg-purple-500/15 text-purple-400 flex items-center justify-center">
-              <MessageSquare className="w-4 h-4" />
-            </div>
+        <Card className="p-5 border-border bg-card/70 backdrop-blur-md shadow-xs">
+          <div className="flex items-center justify-between pb-2">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Target Budget
+            </span>
+            <DollarSign className="h-4 w-4 text-primary" />
           </div>
-          <div className="mt-3">
-            <span className="font-editorial text-2xl font-bold text-foreground">2</span>
-            <span className="text-[11px] text-amber-200/60 block mt-0.5">With VKS Concierge</span>
+          <div className="text-xl font-bold text-foreground font-editorial">
+            {formatINR(profile?.estimatedBudget || 2500000)}
           </div>
+          <p className="text-[11px] text-muted-foreground mt-1">{profile?.guestCount || 500} Estimated Guests</p>
         </Card>
       </div>
 
-      {/* Two Column Layout: Inquiries Table & Celebration Roadmap */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left: Your Inquiries & Quotes (7 cols) */}
-        <div className="lg:col-span-7 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="font-editorial text-lg font-bold text-foreground">Your Quotation Requests</h3>
-            <Link href="/customer/inquiries" className="text-xs text-amber-400 hover:underline">
-              View all
-            </Link>
+      {/* Inquiries Section */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="font-editorial text-xl font-bold text-foreground">
+            Your Event Inquiries ({inquiries.length})
+          </h2>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setIsNewBriefOpen(true)}
+            className="text-xs gap-1.5 cursor-pointer"
+          >
+            <PlusCircle className="w-3.5 h-3.5 text-primary" />
+            <span>New Inquiry Brief</span>
+          </Button>
+        </div>
+
+        {inquiries.length === 0 ? (
+          <div className="text-center py-12 bg-card/40 rounded-3xl border border-dashed border-border/80 p-6 space-y-3">
+            <FileQuestion className="w-10 h-10 text-muted-foreground mx-auto opacity-40" />
+            <h3 className="font-editorial text-base font-bold text-foreground">
+              No Inquiries Created Yet
+            </h3>
+            <p className="text-xs text-muted-foreground max-w-md mx-auto">
+              Explore custom packages in the marketplace or click the button below to submit a custom celebration brief.
+            </p>
+            <Button
+              variant="champagne"
+              size="sm"
+              onClick={() => setIsNewBriefOpen(true)}
+              className="text-xs font-semibold cursor-pointer"
+            >
+              Submit Your First Brief
+            </Button>
           </div>
-
-          <div className="space-y-3">
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {inquiries.map((inq) => (
-              <Card key={inq.id} className="bg-[#1c0c05]/80 border border-amber-500/20 backdrop-blur-xl p-4 hover:border-amber-500/40 transition-all shadow-[0_8px_32px_0_rgba(18,7,2,0.35)]">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-xs text-amber-200/60 font-semibold">{inq.inquiry_number}</span>
-                      <Badge
-                        variant={
-                          inq.status === "confirmed"
-                            ? "success"
-                            : inq.status === "proposal_sent"
-                            ? "warning"
-                            : "default"
-                        }
-                        className="text-[10px] px-1.5 py-0"
-                      >
-                        {inq.status === "confirmed"
-                          ? "Booking Confirmed"
-                          : inq.status === "proposal_sent"
-                          ? "Proposal Received"
-                          : "Under Review"}
-                      </Badge>
-                    </div>
-                    <h4 className="font-editorial text-sm font-bold text-foreground">{inq.event_type}</h4>
-                    <p className="text-xs text-muted-foreground flex items-center gap-3">
-                      <span>
-                        <MapPin className="w-3 h-3 inline mr-1 text-amber-400" />
-                        {inq.location}
-                      </span>
-                      <span>
-                        <Calendar className="w-3 h-3 inline mr-1 text-amber-400" />
-                        {inq.event_date}
-                      </span>
-                      <span>
-                        <Users className="w-3 h-3 inline mr-1 text-amber-400" />
-                        {inq.guest_count} Guests
-                      </span>
-                    </p>
-                  </div>
-
-                  <div className="text-right">
-                    <span className="text-xs font-bold text-amber-400 font-editorial block">
-                      {formatINR(inq.estimated_budget)}
+              <Card key={inq.id} className="p-5 border-border bg-card/60 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-mono text-primary font-bold">
+                    {inq.inquiry_number}
+                  </span>
+                  <Badge variant="outline" className="text-[10px] capitalize">
+                    {inq.status}
+                  </Badge>
+                </div>
+                <div>
+                  <h4 className="font-semibold text-sm text-foreground">{inq.event_type}</h4>
+                  <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1">
+                    <span className="flex items-center gap-1">
+                      <Calendar className="w-3.5 h-3.5" /> {inq.event_date}
                     </span>
-                    {inq.status === "proposal_sent" && (
-                      <Link href="/customer/proposals">
-                        <Button size="sm" className="mt-2 text-[11px] bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 border border-amber-500/40">
-                          Review Proposal
-                        </Button>
-                      </Link>
-                    )}
+                    <span className="flex items-center gap-1">
+                      <MapPin className="w-3.5 h-3.5" /> {inq.location}
+                    </span>
                   </div>
+                </div>
+                <div className="pt-2 border-t border-border/60 flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">Budget:</span>
+                  <span className="font-bold text-foreground">{formatINR(inq.estimated_budget)}</span>
                 </div>
               </Card>
             ))}
           </div>
-        </div>
+        )}
+      </div>
 
-        {/* Right: Next Confirmed Event or Planning Milestone (5 cols) */}
-        <div className="lg:col-span-5 space-y-4">
-          <h3 className="font-editorial text-lg font-bold text-foreground">Upcoming Event Roadmap</h3>
-
-          <Card className="bg-[#1c0c05]/80 border border-amber-500/20 backdrop-blur-xl p-5 space-y-4 shadow-[0_8px_32px_0_rgba(18,7,2,0.35)]">
-            <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/25">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 block">
-                Target Celebration
-              </span>
-              <h4 className="font-editorial text-base font-bold text-foreground mt-1">
-                Grand Wedding & Sangeet Gala
-              </h4>
-              <p className="text-xs text-muted-foreground mt-1">
-                The Leela Palace, Chennai • Target: 28 Nov 2026
-              </p>
+      {/* Modal: Edit Event Preferences */}
+      {isEditProfileOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-card border border-border rounded-3xl max-w-lg w-full p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between pb-3 border-b border-border">
+              <h3 className="font-editorial text-lg font-bold text-foreground">
+                Edit Event & Host Preferences
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsEditProfileOpen(false)}
+                className="p-1 rounded-lg text-muted-foreground hover:text-foreground cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
 
-            <div className="space-y-3 pt-2">
-              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide block">
-                Milestone Stages:
-              </span>
+            <form onSubmit={handleSaveProfile} className="space-y-3 text-xs">
+              <div>
+                <label className="font-semibold text-foreground block mb-1">Host / Couple Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={profileForm.name}
+                  onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value })}
+                  className="w-full bg-secondary border border-border rounded-xl px-3 py-2 text-foreground focus:outline-none"
+                />
+              </div>
 
-              <div className="space-y-3 text-xs">
-                <div className="flex items-start gap-3">
-                  <div className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/40 flex items-center justify-center shrink-0 mt-0.5">
-                    ✓
-                  </div>
-                  <div>
-                    <span className="font-semibold text-foreground block">Quotation Inquired</span>
-                    <span className="text-[11px] text-muted-foreground">Requirements and guest count submitted</span>
-                  </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-semibold text-foreground block mb-1">City / Region *</label>
+                  <input
+                    type="text"
+                    required
+                    value={profileForm.city}
+                    onChange={(e) => setProfileForm({ ...profileForm, city: e.target.value })}
+                    className="w-full bg-secondary border border-border rounded-xl px-3 py-2 text-foreground focus:outline-none"
+                  />
                 </div>
-
-                <div className="flex items-start gap-3">
-                  <div className="w-6 h-6 rounded-full bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/40 flex items-center justify-center shrink-0 mt-0.5 animate-pulse">
-                    ●
-                  </div>
-                  <div>
-                    <span className="font-semibold text-foreground block">Proposal Sign-Off & Contract</span>
-                    <span className="text-[11px] text-amber-700 dark:text-amber-300">Awaiting your mutual acceptance of Proposal v1</span>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-3 opacity-60">
-                  <div className="w-6 h-6 rounded-full bg-muted border border-border flex items-center justify-center shrink-0 mt-0.5 text-muted-foreground">
-                    3
-                  </div>
-                  <div>
-                    <span className="font-semibold text-foreground block">Vendor & Floor Staff Allocation</span>
-                    <span className="text-[11px] text-muted-foreground">Floral imports & steward scheduling</span>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-3 opacity-60">
-                  <div className="w-6 h-6 rounded-full bg-muted border border-border flex items-center justify-center shrink-0 mt-0.5 text-muted-foreground">
-                    4
-                  </div>
-                  <div>
-                    <span className="font-semibold text-foreground block">Event Day Execution</span>
-                    <span className="text-[11px] text-muted-foreground">Live scenography and royal banquet production</span>
-                  </div>
+                <div>
+                  <label className="font-semibold text-foreground block mb-1">Contact Phone</label>
+                  <input
+                    type="text"
+                    value={profileForm.phone}
+                    onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })}
+                    className="w-full bg-secondary border border-border rounded-xl px-3 py-2 text-foreground focus:outline-none"
+                  />
                 </div>
               </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-semibold text-foreground block mb-1">Event Target Date</label>
+                  <input
+                    type="date"
+                    value={profileForm.eventDate}
+                    onChange={(e) => setProfileForm({ ...profileForm, eventDate: e.target.value })}
+                    className="w-full bg-secondary border border-border rounded-xl px-3 py-2 text-foreground focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="font-semibold text-foreground block mb-1">Guest Count</label>
+                  <input
+                    type="number"
+                    min={10}
+                    value={profileForm.guestCount}
+                    onChange={(e) => setProfileForm({ ...profileForm, guestCount: Number(e.target.value) })}
+                    className="w-full bg-secondary border border-border rounded-xl px-3 py-2 text-foreground focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="font-semibold text-foreground block mb-1">Estimated Budget (₹)</label>
+                <input
+                  type="number"
+                  min={100000}
+                  step={50000}
+                  value={profileForm.estimatedBudget}
+                  onChange={(e) => setProfileForm({ ...profileForm, estimatedBudget: Number(e.target.value) })}
+                  className="w-full bg-secondary border border-border rounded-xl px-3 py-2 text-foreground focus:outline-none"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2.5 pt-3 border-t border-border">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsEditProfileOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" variant="champagne" size="sm" className="font-semibold">
+                  Save Changes
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: New Custom Brief */}
+      {isNewBriefOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-card border border-border rounded-3xl max-w-lg w-full p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between pb-3 border-b border-border">
+              <h3 className="font-editorial text-lg font-bold text-foreground">
+                Submit New Event Brief
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsNewBriefOpen(false)}
+                className="p-1 rounded-lg text-muted-foreground hover:text-foreground cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
 
-            <div className="pt-2">
-              <Link href="/customer/messages">
-                <Button variant="outline" className="w-full text-xs text-foreground gap-2">
-                  <MessageSquare className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-                  <span>Chat with VKS Concierge</span>
+            <form onSubmit={handleCreateBrief} className="space-y-3 text-xs">
+              <div>
+                <label className="font-semibold text-foreground block mb-1">Celebration / Event Type *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Royal Rajputana Heritage Gala"
+                  value={briefForm.event_type}
+                  onChange={(e) => setBriefForm({ ...briefForm, event_type: e.target.value })}
+                  className="w-full bg-secondary border border-border rounded-xl px-3 py-2 text-foreground focus:outline-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-semibold text-foreground block mb-1">Event Date *</label>
+                  <input
+                    type="date"
+                    required
+                    value={briefForm.event_date}
+                    onChange={(e) => setBriefForm({ ...briefForm, event_date: e.target.value })}
+                    className="w-full bg-secondary border border-border rounded-xl px-3 py-2 text-foreground focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="font-semibold text-foreground block mb-1">Location / Venue</label>
+                  <input
+                    type="text"
+                    required
+                    value={briefForm.location}
+                    onChange={(e) => setBriefForm({ ...briefForm, location: e.target.value })}
+                    className="w-full bg-secondary border border-border rounded-xl px-3 py-2 text-foreground focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-semibold text-foreground block mb-1">Guest Count</label>
+                  <input
+                    type="number"
+                    min={20}
+                    value={briefForm.guest_count}
+                    onChange={(e) => setBriefForm({ ...briefForm, guest_count: Number(e.target.value) })}
+                    className="w-full bg-secondary border border-border rounded-xl px-3 py-2 text-foreground focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="font-semibold text-foreground block mb-1">Budget (₹)</label>
+                  <input
+                    type="number"
+                    min={50000}
+                    step={50000}
+                    value={briefForm.estimated_budget}
+                    onChange={(e) => setBriefForm({ ...briefForm, estimated_budget: Number(e.target.value) })}
+                    className="w-full bg-secondary border border-border rounded-xl px-3 py-2 text-foreground focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="font-semibold text-foreground block mb-1">Specific Visions & Requirements</label>
+                <textarea
+                  rows={3}
+                  value={briefForm.notes}
+                  onChange={(e) => setBriefForm({ ...briefForm, notes: e.target.value })}
+                  className="w-full bg-secondary border border-border rounded-xl p-3 text-foreground focus:outline-none"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2.5 pt-3 border-t border-border">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsNewBriefOpen(false)}
+                >
+                  Cancel
                 </Button>
-              </Link>
-            </div>
-          </Card>
+                <Button type="submit" variant="champagne" size="sm" className="font-semibold">
+                  Submit Brief
+                </Button>
+              </div>
+            </form>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

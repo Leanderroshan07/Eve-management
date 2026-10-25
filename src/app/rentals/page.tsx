@@ -28,6 +28,7 @@ import { Badge } from "@/components/ui/badge";
 import { formatINR, formatDate } from "@/lib/format";
 import { AuthNavControl } from "@/components/shared/auth-nav-control";
 import { createLiveRentalOrder } from "@/lib/supabase/db-sync";
+import { getAllPublicRentals } from "@/lib/user-scoped-data";
 import {
   getStoredRentalProducts,
   getStoredRentalProviders,
@@ -62,7 +63,7 @@ export default function PublicRentalsPage() {
   const [bookingSuccessOrder, setBookingSuccessOrder] = React.useState<any | null>(null);
 
   React.useEffect(() => {
-    setProducts(getStoredRentalProducts());
+    setProducts(getAllPublicRentals());
     setProviders(getStoredRentalProviders());
   }, []);
 

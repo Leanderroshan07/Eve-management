@@ -61,6 +61,8 @@ export interface CustomerInquiry {
   notes: string;
   status: "pending" | "proposal_sent" | "confirmed" | "declined";
   package_id?: string;
+  organizer_id?: string;
+  source?: string;
   created_at: string;
 }
 
