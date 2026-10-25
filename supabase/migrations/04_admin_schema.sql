@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS public.moderation_reports (
 CREATE TABLE IF NOT EXISTS public.dispute_cases (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   dispute_number TEXT UNIQUE NOT NULL,
-  booking_id UUID REFERENCES public.confirmed_bookings(id) ON DELETE SET NULL,
+  booking_id UUID REFERENCES public.organizer_bookings(id) ON DELETE SET NULL,
   booking_reference TEXT NOT NULL,
   proposal_version INTEGER NOT NULL,
   customer_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,

@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS public.proposal_change_requests (
 -- 4. Customer Verified Reviews
 CREATE TABLE IF NOT EXISTS public.customer_reviews (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  booking_id UUID REFERENCES public.confirmed_bookings(id) ON DELETE SET NULL,
+  booking_id UUID REFERENCES public.organizer_bookings(id) ON DELETE SET NULL,
   organizer_id UUID REFERENCES public.organizer_profiles(id) ON DELETE CASCADE,
   customer_id UUID REFERENCES public.customer_profiles(id) ON DELETE CASCADE,
   client_names TEXT NOT NULL,
@@ -85,7 +85,7 @@ CREATE POLICY "Customers can accept proposals"
 
 -- Confirmed Bookings: Customers can view their confirmed bookings
 CREATE POLICY "Customers can view confirmed bookings"
-  ON public.confirmed_bookings
+  ON public.organizer_bookings
   FOR SELECT
   USING (customer_name = (SELECT full_name FROM public.customer_profiles WHERE user_id = auth.uid()));
 
