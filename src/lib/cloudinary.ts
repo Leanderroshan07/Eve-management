@@ -50,7 +50,34 @@ export async function uploadToCloudinary(file: File): Promise<CloudinaryUploadRe
   const cloudName = env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
   const uploadPreset = env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET;
 
-  // Real Cloudinary upload attempt if configured
+  // Direct upload via secure authenticated server route (/api/upload)
+  try {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const response = await fetch("/api/upload", {
+      method: "POST",
+      body: formData,
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      if (data.secure_url) {
+        return {
+          secure_url: data.secure_url,
+          public_id: data.public_id,
+          format: data.format,
+          bytes: data.bytes,
+          width: data.width,
+          height: data.height,
+        };
+      }
+    }
+  } catch (err) {
+    console.warn("Server upload attempt error, trying unsigned client route:", err);
+  }
+
+  // Fallback direct unsigned client upload if upload_preset is set
   if (cloudName && uploadPreset) {
     try {
       const formData = new FormData();
