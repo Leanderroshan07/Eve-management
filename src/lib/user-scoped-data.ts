@@ -14,23 +14,30 @@ import {
   OrganizerBusiness,
 } from "./organizer-data";
 import {
-  CURRENT_CUSTOMER,
-  CustomerProfile,
-} from "./customer-data";
-import {
   RentalProduct,
   RentalOrder,
   RentalProvider,
   CURRENT_RENTAL_PROVIDER,
   getStoredRentalProducts,
   getStoredRentalOrders,
+  saveStoredRentalOrders,
 } from "./rental-data";
+import {
+  createLiveCustomerInquiry,
+  fetchLiveCustomerInquiries,
+  createLiveProposal,
+  fetchLiveProposals,
+  acceptLiveProposal,
+  fetchLiveBookings,
+  createLiveRentalOrder,
+  fetchLiveRentalOrders,
+} from "./supabase/db-sync";
 
 /**
  * Checks whether the current user is a seeded demo account.
  */
 export function isSeededDemoUser(user: AuthUser | null): boolean {
-  if (!user) return false;
+  if (!user) return true; // Default guest acts as demo customer
   if (user.isDemo) return true;
 
   const demoEmails = [
@@ -42,6 +49,11 @@ export function isSeededDemoUser(user: AuthUser | null): boolean {
     "vikram.sundaram@gmail.com",
   ];
   return demoEmails.includes(user.email.toLowerCase());
+}
+
+function getUserKey(user: AuthUser | null, fallback = "demo-cust-001"): string {
+  if (!user) return fallback;
+  return user.email ? user.email.toLowerCase().replace(/[^a-z0-9]/g, "_") : user.id;
 }
 
 // ============================================================================
@@ -61,9 +73,22 @@ export interface CustomerEventProfile {
 }
 
 export function getScopedCustomerProfile(user: AuthUser | null): CustomerEventProfile {
+  const userKey = getUserKey(user, "sarah_kapoor_example_com");
+  if (typeof window !== "undefined") {
+    const key = `veluxe_cust_profile_${userKey}`;
+    const saved = localStorage.getItem(key);
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.warn(e);
+      }
+    }
+  }
+
   if (!user || isSeededDemoUser(user)) {
     return {
-      id: "demo-cust-001",
+      id: "d0000000-0000-0000-0000-000000000001",
       name: "Sarah Kapoor",
       email: "sarah.kapoor@example.com",
       phone: "+91 99402 88123",
@@ -73,18 +98,6 @@ export function getScopedCustomerProfile(user: AuthUser | null): CustomerEventPr
       estimatedBudget: 3500000,
       guestCount: 650,
     };
-  }
-
-  if (typeof window !== "undefined") {
-    const key = `veluxe_cust_profile_${user.id}`;
-    const saved = localStorage.getItem(key);
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        console.warn(e);
-      }
-    }
   }
 
   return {
@@ -102,80 +115,179 @@ export function getScopedCustomerProfile(user: AuthUser | null): CustomerEventPr
 
 export function saveScopedCustomerProfile(user: AuthUser, updates: Partial<CustomerEventProfile>) {
   if (typeof window === "undefined") return;
+  const userKey = getUserKey(user, "sarah_kapoor_example_com");
   const current = getScopedCustomerProfile(user);
   const updated = { ...current, ...updates };
-  localStorage.setItem(`veluxe_cust_profile_${user.id}`, JSON.stringify(updated));
+  localStorage.setItem(`veluxe_cust_profile_${userKey}`, JSON.stringify(updated));
 }
 
 export function getScopedCustomerInquiries(user: AuthUser | null): CustomerInquiry[] {
-  if (!user || isSeededDemoUser(user)) {
-    return SEEDED_INQUIRIES;
-  }
-
+  const userKey = getUserKey(user, "sarah_kapoor_example_com");
   if (typeof window !== "undefined") {
-    const key = `veluxe_inquiries_${user.id}`;
+    const key = `veluxe_inquiries_${userKey}`;
     const saved = localStorage.getItem(key);
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
       } catch (e) {
         console.warn(e);
       }
     }
+
+    // Initialize with seeded items for demo user and persist
+    if (!user || isSeededDemoUser(user)) {
+      localStorage.setItem(key, JSON.stringify(SEEDED_INQUIRIES));
+      return SEEDED_INQUIRIES;
+    }
   }
-  return [];
+
+  return !user || isSeededDemoUser(user) ? SEEDED_INQUIRIES : [];
 }
 
-export function addScopedCustomerInquiry(user: AuthUser, inquiry: CustomerInquiry) {
-  if (typeof window === "undefined") return;
-  const current = getScopedCustomerInquiries(user);
-  const updated = [inquiry, ...current];
-  localStorage.setItem(`veluxe_inquiries_${user.id}`, JSON.stringify(updated));
+export function addScopedCustomerInquiry(user: AuthUser | null, inquiry: CustomerInquiry) {
+  const userKey = getUserKey(user, "sarah_kapoor_example_com");
+  if (typeof window !== "undefined") {
+    const current = getScopedCustomerInquiries(user);
+    // Prevent duplicate entries
+    const filtered = current.filter((i) => i.id !== inquiry.id && i.inquiry_number !== inquiry.inquiry_number);
+    const updated = [inquiry, ...filtered];
+    localStorage.setItem(`veluxe_inquiries_${userKey}`, JSON.stringify(updated));
 
-  // Also broadcast to target organizer store
-  const orgKey = `veluxe_org_inquiries_${inquiry.organizer_id || "general"}`;
-  try {
-    const existingOrgInquiries = JSON.parse(localStorage.getItem(orgKey) || "[]");
-    localStorage.setItem(orgKey, JSON.stringify([inquiry, ...existingOrgInquiries]));
-  } catch (e) {
-    console.warn(e);
+    // Also broadcast to target organizer store so organizer sees it immediately
+    const orgId = inquiry.organizer_id || "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11";
+    const orgKey = `veluxe_org_inquiries_${orgId}`;
+    try {
+      const existingOrgInquiries: CustomerInquiry[] = JSON.parse(localStorage.getItem(orgKey) || "[]");
+      const filteredOrg = existingOrgInquiries.filter((i) => i.id !== inquiry.id && i.inquiry_number !== inquiry.inquiry_number);
+      localStorage.setItem(orgKey, JSON.stringify([inquiry, ...filteredOrg]));
+    } catch (e) {
+      console.warn(e);
+    }
   }
+
+  // Dual-write to live Supabase backend
+  createLiveCustomerInquiry(inquiry).catch((err) => {
+    console.warn("Background Supabase inquiry sync error:", err);
+  });
 }
 
 export function getScopedCustomerProposals(user: AuthUser | null): Proposal[] {
-  if (!user || isSeededDemoUser(user)) {
-    return SEEDED_PROPOSALS;
-  }
+  const userKey = getUserKey(user, "sarah_kapoor_example_com");
   if (typeof window !== "undefined") {
-    const key = `veluxe_proposals_${user.id}`;
+    const key = `veluxe_proposals_${userKey}`;
     const saved = localStorage.getItem(key);
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
       } catch (e) {
         console.warn(e);
       }
     }
+
+    if (!user || isSeededDemoUser(user)) {
+      localStorage.setItem(key, JSON.stringify(SEEDED_PROPOSALS));
+      return SEEDED_PROPOSALS;
+    }
   }
-  return [];
+
+  return !user || isSeededDemoUser(user) ? SEEDED_PROPOSALS : [];
+}
+
+export function acceptScopedCustomerProposal(
+  user: AuthUser | null,
+  proposalId: string
+): { proposal: Proposal; booking: ConfirmedBooking } {
+  const userKey = getUserKey(user, "sarah_kapoor_example_com");
+  const currentProposals = getScopedCustomerProposals(user);
+  const proposalIndex = currentProposals.findIndex((p) => p.id === proposalId);
+
+  if (proposalIndex < 0) {
+    throw new Error("Proposal not found");
+  }
+
+  const proposal = { ...currentProposals[proposalIndex] };
+  proposal.customer_accepted = true;
+  proposal.accepted_version = proposal.version;
+  proposal.status = "accepted";
+  proposal.updated_at = new Date().toISOString();
+
+  currentProposals[proposalIndex] = proposal;
+
+  // 1. Create confirmed booking
+  const booking: ConfirmedBooking = {
+    id: `bkg-${Date.now()}`,
+    booking_reference: `VEL-${Math.floor(1000 + Math.random() * 9000)}-${new Date().getFullYear()}`,
+    inquiry_id: proposal.inquiry_id,
+    proposal_id: proposal.id,
+    proposal_version: proposal.version,
+    organizer_id: proposal.organizer_id || "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+    customer_name: proposal.customer_name,
+    customer_phone: "+91 99402 88123",
+    event_type: proposal.event_type,
+    event_date: proposal.event_date,
+    venue_name: proposal.venue_location,
+    total_amount: proposal.total_amount,
+    status: "confirmed",
+    created_at: new Date().toISOString(),
+  };
+
+  if (typeof window !== "undefined") {
+    // Save updated proposals
+    localStorage.setItem(`veluxe_proposals_${userKey}`, JSON.stringify(currentProposals));
+
+    // Save new booking to customer's bookings
+    const currentBookings = getScopedCustomerBookings(user);
+    const updatedBookings = [booking, ...currentBookings.filter((b) => b.id !== booking.id)];
+    localStorage.setItem(`veluxe_bookings_${userKey}`, JSON.stringify(updatedBookings));
+
+    // Also broadcast to organizer's bookings store
+    const orgId = proposal.organizer_id || "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11";
+    const orgBookingKey = `veluxe_org_bookings_${orgId}`;
+    try {
+      const existingOrgBookings: ConfirmedBooking[] = JSON.parse(localStorage.getItem(orgBookingKey) || "[]");
+      localStorage.setItem(orgBookingKey, JSON.stringify([booking, ...existingOrgBookings.filter((b) => b.id !== booking.id)]));
+    } catch (e) {
+      console.warn(e);
+    }
+  }
+
+  // Dual-write to Supabase
+  acceptLiveProposal(proposal).catch((err) => {
+    console.warn("Background Supabase accept proposal error:", err);
+  });
+
+  return { proposal, booking };
 }
 
 export function getScopedCustomerBookings(user: AuthUser | null): ConfirmedBooking[] {
-  if (!user || isSeededDemoUser(user)) {
-    return SEEDED_BOOKINGS;
-  }
+  const userKey = getUserKey(user, "sarah_kapoor_example_com");
   if (typeof window !== "undefined") {
-    const key = `veluxe_bookings_${user.id}`;
+    const key = `veluxe_bookings_${userKey}`;
     const saved = localStorage.getItem(key);
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
       } catch (e) {
         console.warn(e);
       }
     }
+
+    if (!user || isSeededDemoUser(user)) {
+      localStorage.setItem(key, JSON.stringify(SEEDED_BOOKINGS));
+      return SEEDED_BOOKINGS;
+    }
   }
-  return [];
+
+  return !user || isSeededDemoUser(user) ? SEEDED_BOOKINGS : [];
 }
 
 // ============================================================================
@@ -183,12 +295,9 @@ export function getScopedCustomerBookings(user: AuthUser | null): ConfirmedBooki
 // ============================================================================
 
 export function getScopedOrganizerProfile(user: AuthUser | null): OrganizerBusiness {
-  if (!user || isSeededDemoUser(user)) {
-    return SEEDED_ORGANIZER;
-  }
-
+  const orgId = user?.id || "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11";
   if (typeof window !== "undefined") {
-    const key = `veluxe_org_profile_${user.id}`;
+    const key = `veluxe_org_profile_${orgId}`;
     const saved = localStorage.getItem(key);
     if (saved) {
       try {
@@ -197,6 +306,10 @@ export function getScopedOrganizerProfile(user: AuthUser | null): OrganizerBusin
         console.warn(e);
       }
     }
+  }
+
+  if (!user || isSeededDemoUser(user)) {
+    return SEEDED_ORGANIZER;
   }
 
   return {
@@ -224,32 +337,40 @@ export function getScopedOrganizerProfile(user: AuthUser | null): OrganizerBusin
 
 export function saveScopedOrganizerProfile(user: AuthUser, updates: Partial<OrganizerBusiness>) {
   if (typeof window === "undefined") return;
+  const orgId = user?.id || "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11";
   const current = getScopedOrganizerProfile(user);
   const updated = { ...current, ...updates };
-  localStorage.setItem(`veluxe_org_profile_${user.id}`, JSON.stringify(updated));
+  localStorage.setItem(`veluxe_org_profile_${orgId}`, JSON.stringify(updated));
 }
 
 export function getScopedOrganizerPackages(user: AuthUser | null): OrganizerPackage[] {
-  if (!user || isSeededDemoUser(user)) {
-    return SEEDED_PACKAGES;
-  }
-
+  const orgId = user?.id || "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11";
   if (typeof window !== "undefined") {
-    const key = `veluxe_org_packages_${user.id}`;
+    const key = `veluxe_org_packages_${orgId}`;
     const saved = localStorage.getItem(key);
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
       } catch (e) {
         console.warn(e);
       }
     }
+
+    if (!user || isSeededDemoUser(user)) {
+      localStorage.setItem(key, JSON.stringify(SEEDED_PACKAGES));
+      return SEEDED_PACKAGES;
+    }
   }
-  return [];
+
+  return !user || isSeededDemoUser(user) ? SEEDED_PACKAGES : [];
 }
 
 export function saveScopedOrganizerPackage(user: AuthUser, pkg: OrganizerPackage) {
   if (typeof window === "undefined") return;
+  const orgId = user?.id || "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11";
   const current = getScopedOrganizerPackages(user);
   const index = current.findIndex((p) => p.id === pkg.id);
   let updated: OrganizerPackage[];
@@ -259,7 +380,7 @@ export function saveScopedOrganizerPackage(user: AuthUser, pkg: OrganizerPackage
   } else {
     updated = [pkg, ...current];
   }
-  localStorage.setItem(`veluxe_org_packages_${user.id}`, JSON.stringify(updated));
+  localStorage.setItem(`veluxe_org_packages_${orgId}`, JSON.stringify(updated));
 
   // Sync to public marketplace registry
   updateGlobalMarketplacePackages(pkg);
@@ -267,31 +388,102 @@ export function saveScopedOrganizerPackage(user: AuthUser, pkg: OrganizerPackage
 
 export function deleteScopedOrganizerPackage(user: AuthUser, pkgId: string) {
   if (typeof window === "undefined") return;
+  const orgId = user?.id || "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11";
   const current = getScopedOrganizerPackages(user);
   const updated = current.filter((p) => p.id !== pkgId);
-  localStorage.setItem(`veluxe_org_packages_${user.id}`, JSON.stringify(updated));
+  localStorage.setItem(`veluxe_org_packages_${orgId}`, JSON.stringify(updated));
 
-  // Remove from public marketplace registry
   removeGlobalMarketplacePackage(pkgId);
 }
 
 export function getScopedOrganizerInquiries(user: AuthUser | null): CustomerInquiry[] {
-  if (!user || isSeededDemoUser(user)) {
-    return SEEDED_INQUIRIES;
-  }
-
+  const orgId = user?.id || "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11";
   if (typeof window !== "undefined") {
-    const key = `veluxe_org_inquiries_${user.id}`;
+    const key = `veluxe_org_inquiries_${orgId}`;
     const saved = localStorage.getItem(key);
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
       } catch (e) {
         console.warn(e);
       }
     }
+
+    // Default to seeded inquiries for organizer
+    localStorage.setItem(key, JSON.stringify(SEEDED_INQUIRIES));
   }
-  return [];
+
+  return SEEDED_INQUIRIES;
+}
+
+export function getScopedOrganizerProposals(user: AuthUser | null): Proposal[] {
+  const orgId = user?.id || "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11";
+  if (typeof window !== "undefined") {
+    const key = `veluxe_org_proposals_${orgId}`;
+    const saved = localStorage.getItem(key);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      } catch (e) {
+        console.warn(e);
+      }
+    }
+
+    localStorage.setItem(key, JSON.stringify(SEEDED_PROPOSALS));
+  }
+
+  return SEEDED_PROPOSALS;
+}
+
+export function saveScopedOrganizerProposal(user: AuthUser | null, proposal: Proposal) {
+  const orgId = user?.id || "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11";
+  if (typeof window !== "undefined") {
+    const current = getScopedOrganizerProposals(user);
+    const updated = [proposal, ...current.filter((p) => p.id !== proposal.id)];
+    localStorage.setItem(`veluxe_org_proposals_${orgId}`, JSON.stringify(updated));
+
+    // Also broadcast to target customer
+    const targetCustomerKey = proposal.customer_email.toLowerCase().replace(/[^a-z0-9]/g, "_");
+    try {
+      const custProposals: Proposal[] = JSON.parse(localStorage.getItem(`veluxe_proposals_${targetCustomerKey}`) || "[]");
+      localStorage.setItem(`veluxe_proposals_${targetCustomerKey}`, JSON.stringify([proposal, ...custProposals.filter((p) => p.id !== proposal.id)]));
+    } catch (e) {
+      console.warn(e);
+    }
+  }
+
+  // Dual-write to Supabase
+  createLiveProposal(proposal).catch((err) => {
+    console.warn("Background Supabase proposal sync error:", err);
+  });
+}
+
+export function getScopedOrganizerBookings(user: AuthUser | null): ConfirmedBooking[] {
+  const orgId = user?.id || "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11";
+  if (typeof window !== "undefined") {
+    const key = `veluxe_org_bookings_${orgId}`;
+    const saved = localStorage.getItem(key);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      } catch (e) {
+        console.warn(e);
+      }
+    }
+
+    localStorage.setItem(key, JSON.stringify(SEEDED_BOOKINGS));
+  }
+
+  return SEEDED_BOOKINGS;
 }
 
 // ============================================================================
@@ -344,26 +536,25 @@ export function saveScopedRentalProviderProfile(user: AuthUser, updates: Partial
 }
 
 export function getScopedRentalProducts(user: AuthUser | null): RentalProduct[] {
-  if (!user || isSeededDemoUser(user)) {
-    return getStoredRentalProducts();
-  }
-
   if (typeof window !== "undefined") {
-    const key = `veluxe_rentals_${user.id}`;
+    const userKey = user?.id || "11111111-1111-4111-8111-111111111111";
+    const key = `veluxe_rentals_${userKey}`;
     const saved = localStorage.getItem(key);
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       } catch (e) {
         console.warn(e);
       }
     }
   }
-  return [];
+  return getStoredRentalProducts();
 }
 
 export function saveScopedRentalProduct(user: AuthUser, product: RentalProduct) {
   if (typeof window === "undefined") return;
+  const userKey = user?.id || "11111111-1111-4111-8111-111111111111";
   const current = getScopedRentalProducts(user);
   const index = current.findIndex((p) => p.id === product.id);
   let updated: RentalProduct[];
@@ -373,39 +564,93 @@ export function saveScopedRentalProduct(user: AuthUser, product: RentalProduct) 
   } else {
     updated = [product, ...current];
   }
-  localStorage.setItem(`veluxe_rentals_${user.id}`, JSON.stringify(updated));
+  localStorage.setItem(`veluxe_rentals_${userKey}`, JSON.stringify(updated));
 
-  // Also make available in public rentals storefront
   updateGlobalMarketplaceRental(product);
 }
 
 export function deleteScopedRentalProduct(user: AuthUser, productId: string) {
   if (typeof window === "undefined") return;
+  const userKey = user?.id || "11111111-1111-4111-8111-111111111111";
   const current = getScopedRentalProducts(user);
   const updated = current.filter((p) => p.id !== productId);
-  localStorage.setItem(`veluxe_rentals_${user.id}`, JSON.stringify(updated));
+  localStorage.setItem(`veluxe_rentals_${userKey}`, JSON.stringify(updated));
 
-  // Remove from public storefront
   removeGlobalMarketplaceRental(productId);
 }
 
 export function getScopedRentalOrders(user: AuthUser | null): RentalOrder[] {
-  if (!user || isSeededDemoUser(user)) {
-    return getStoredRentalOrders();
-  }
-
   if (typeof window !== "undefined") {
-    const key = `veluxe_rental_orders_${user.id}`;
-    const saved = localStorage.getItem(key);
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        console.warn(e);
+    // If the user is a customer, return their customer orders
+    if (user?.role === "customer" || !user?.role) {
+      const userKey = getUserKey(user, "sarah_kapoor_example_com");
+      const key = `veluxe_cust_rental_orders_${userKey}`;
+      const saved = localStorage.getItem(key);
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        } catch (e) {
+          console.warn(e);
+        }
       }
+      // Fallback: search main orders list for this email
+      const allOrders = getStoredRentalOrders();
+      const customerEmail = user?.email || "sarah.kapoor@example.com";
+      const matches = allOrders.filter((o) => o.requesterEmail?.toLowerCase() === customerEmail.toLowerCase());
+      if (matches.length > 0) {
+        localStorage.setItem(key, JSON.stringify(matches));
+        return matches;
+      }
+    } else {
+      // Rental provider role
+      return getStoredRentalOrders();
     }
   }
-  return [];
+
+  return getStoredRentalOrders();
+}
+
+export function addScopedRentalOrder(order: RentalOrder, user?: AuthUser | null) {
+  if (typeof window === "undefined") return;
+  // 1. Save to central stored rental orders
+  const allOrders = getStoredRentalOrders();
+  const updatedAll = [order, ...allOrders.filter((o) => o.id !== order.id)];
+  saveStoredRentalOrders(updatedAll);
+
+  // 2. Save to customer-scoped store
+  const userKey = getUserKey(user || null, order.requesterEmail.toLowerCase().replace(/[^a-z0-9]/g, "_"));
+  try {
+    const custKey = `veluxe_cust_rental_orders_${userKey}`;
+    const existingCust: RentalOrder[] = JSON.parse(localStorage.getItem(custKey) || "[]");
+    localStorage.setItem(custKey, JSON.stringify([order, ...existingCust.filter((o) => o.id !== order.id)]));
+  } catch (e) {
+    console.warn(e);
+  }
+
+  // 3. Dual-write to live Supabase backend
+  createLiveRentalOrder({
+    orderNumber: order.orderNumber,
+    providerId: order.providerId || "11111111-1111-4111-8111-111111111111",
+    requesterRole: order.requesterRole,
+    customerName: order.requesterName,
+    customerEmail: order.requesterEmail,
+    customerPhone: order.requesterPhone,
+    eventName: order.eventName,
+    venueName: order.venueName,
+    venueAddress: order.venueAddress,
+    startDate: order.startDate,
+    endDate: order.endDate,
+    rentalDays: order.rentalDays,
+    subtotal: order.subtotal,
+    deliveryAndSetupFee: order.deliveryAndSetupFee,
+    totalDeposit: order.totalDeposit,
+    grandTotal: order.grandTotal,
+    status: order.status,
+    notes: order.notes,
+  }).catch((err) => {
+    console.warn("Background Supabase rental order sync error:", err);
+  });
 }
 
 // ============================================================================
@@ -469,10 +714,6 @@ function removeGlobalMarketplaceRental(productId: string) {
   }
 }
 
-/**
- * Returns all public packages for the Marketplace:
- * Seeded packages + any newly created packages published by user accounts.
- */
 export function getAllPublicPackages(): OrganizerPackage[] {
   if (typeof window === "undefined") return SEEDED_PACKAGES;
   try {
@@ -483,10 +724,6 @@ export function getAllPublicPackages(): OrganizerPackage[] {
   }
 }
 
-/**
- * Returns all public rental equipment for the Rentals Storefront:
- * Seeded rental products + any newly created products cataloged by renter accounts.
- */
 export function getAllPublicRentals(): RentalProduct[] {
   const base = getStoredRentalProducts();
   if (typeof window === "undefined") return base;

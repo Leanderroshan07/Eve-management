@@ -24,15 +24,17 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog } from "@/components/ui/dialog";
 import { formatINR } from "@/lib/format";
+import { useAuth } from "@/lib/supabase/auth-context";
 import {
-  CURRENT_CUSTOMER,
-  getCustomerProposals,
-  acceptProposalAsCustomer,
-  requestChangesAsCustomer,
-} from "@/lib/customer-data";
+  getScopedCustomerProposals,
+  acceptScopedCustomerProposal,
+} from "@/lib/user-scoped-data";
+import { requestChangesAsCustomer } from "@/lib/customer-data";
+import { fetchLiveProposals } from "@/lib/supabase/db-sync";
 import { Proposal } from "@/lib/organizer-data";
 
 export default function CustomerProposalsPage() {
+  const { user } = useAuth();
   const [proposals, setProposals] = React.useState<Proposal[]>([]);
   const [selectedProposal, setSelectedProposal] = React.useState<Proposal | null>(null);
 
@@ -47,19 +49,38 @@ export default function CustomerProposalsPage() {
   const [confirmedBookingRef, setConfirmedBookingRef] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    const data = getCustomerProposals(CURRENT_CUSTOMER.email);
-    setProposals([...data]);
-    if (data.length > 0) {
-      setSelectedProposal(data[0]);
+    const local = getScopedCustomerProposals(user);
+    setProposals([...local]);
+    if (local.length > 0 && !selectedProposal) {
+      setSelectedProposal(local[0]);
     }
-  }, []);
+
+    const email = user?.email || "sarah.kapoor@example.com";
+    fetchLiveProposals({ customerEmail: email }).then((dbProposals) => {
+      if (dbProposals.length > 0) {
+        const map = new Map(local.map((p) => [p.id, p]));
+        for (const item of dbProposals) {
+          map.set(item.id, item);
+        }
+        const merged = Array.from(map.values());
+        setProposals(merged);
+        if (merged.length > 0 && !selectedProposal) {
+          setSelectedProposal(merged[0]);
+        }
+      }
+    });
+  }, [user]);
 
   const handleAcceptProposal = () => {
     if (!selectedProposal) return;
-    const { proposal, booking } = acceptProposalAsCustomer(selectedProposal.id);
-    setSelectedProposal({ ...proposal });
-    setConfirmedBookingRef(booking.booking_reference);
-    setProposals(getCustomerProposals(CURRENT_CUSTOMER.email));
+    try {
+      const { proposal, booking } = acceptScopedCustomerProposal(user, selectedProposal.id);
+      setSelectedProposal({ ...proposal });
+      setConfirmedBookingRef(booking.booking_reference);
+      setProposals(getScopedCustomerProposals(user));
+    } catch (e) {
+      console.warn("Accept proposal error:", e);
+    }
   };
 
   const handleRequestChanges = (e: React.FormEvent) => {
@@ -69,7 +90,7 @@ export default function CustomerProposalsPage() {
     setSelectedProposal({ ...updated });
     setChangeModalOpen(false);
     setChangeNotes("");
-    setProposals(getCustomerProposals(CURRENT_CUSTOMER.email));
+    setProposals(getScopedCustomerProposals(user));
   };
 
   return (

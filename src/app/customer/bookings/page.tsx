@@ -21,19 +21,31 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog } from "@/components/ui/dialog";
 import { formatINR } from "@/lib/format";
-import {
-  CURRENT_CUSTOMER,
-  getCustomerBookings,
-} from "@/lib/customer-data";
+import { useAuth } from "@/lib/supabase/auth-context";
+import { getScopedCustomerBookings } from "@/lib/user-scoped-data";
+import { fetchLiveBookings } from "@/lib/supabase/db-sync";
 import { ConfirmedBooking } from "@/lib/organizer-data";
 
 export default function CustomerBookingsPage() {
+  const { user } = useAuth();
   const [bookings, setBookings] = React.useState<ConfirmedBooking[]>([]);
   const [selectedInvoice, setSelectedInvoice] = React.useState<ConfirmedBooking | null>(null);
 
   React.useEffect(() => {
-    setBookings(getCustomerBookings(CURRENT_CUSTOMER.name));
-  }, []);
+    const local = getScopedCustomerBookings(user);
+    setBookings(local);
+
+    const name = user?.name || "Sarah Kapoor";
+    fetchLiveBookings({ customerName: name }).then((dbBookings) => {
+      if (dbBookings.length > 0) {
+        const map = new Map(local.map((b) => [b.id, b]));
+        for (const item of dbBookings) {
+          map.set(item.id, item);
+        }
+        setBookings(Array.from(map.values()));
+      }
+    });
+  }, [user]);
 
   return (
     <div className="space-y-6">

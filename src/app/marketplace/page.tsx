@@ -186,6 +186,7 @@ export default function MarketplacePage() {
       const newInquiry: CustomerInquiry = {
         id: `inq-${Date.now()}`,
         inquiry_number: `INQ-2026-${Math.floor(100 + Math.random() * 900)}`,
+        organizer_id: selectedPackage.organizer_id || "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
         customer_name: formData.name,
         customer_email: formData.email,
         customer_phone: formData.phone,
@@ -199,11 +200,7 @@ export default function MarketplacePage() {
         package_id: selectedPackage.id,
         created_at: new Date().toISOString(),
       };
-      if (user) {
-        addScopedCustomerInquiry(user, newInquiry);
-      } else {
-        SEEDED_INQUIRIES.unshift(newInquiry);
-      }
+      addScopedCustomerInquiry(user, newInquiry);
       setSubmittedInquiry(newInquiry);
       setIsSubmitting(false);
     }, 600);

@@ -20,15 +20,35 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Dialog } from "@/components/ui/dialog";
-import { SEEDED_PROPOSALS, Proposal, ProposalLineItem } from "@/lib/organizer-data";
+import { Proposal, ProposalLineItem } from "@/lib/organizer-data";
 import { formatINR, formatDate } from "@/lib/format";
 import { motion } from "motion/react";
 import { fadeInUp, staggerContainer } from "@/lib/motion";
+import { useAuth } from "@/lib/supabase/auth-context";
+import { getScopedOrganizerProposals, saveScopedOrganizerProposal } from "@/lib/user-scoped-data";
+import { fetchLiveProposals } from "@/lib/supabase/db-sync";
 
 export default function OrganizerProposalsPage() {
-  const [proposals, setProposals] = React.useState<Proposal[]>(SEEDED_PROPOSALS);
+  const { user } = useAuth();
+  const [proposals, setProposals] = React.useState<Proposal[]>([]);
   const [activeProposal, setActiveProposal] = React.useState<Proposal | null>(null);
   const [builderOpen, setBuilderOpen] = React.useState(false);
+
+  React.useEffect(() => {
+    const local = getScopedOrganizerProposals(user);
+    setProposals(local);
+
+    const orgId = user?.id || "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11";
+    fetchLiveProposals({ organizerId: orgId }).then((dbProposals) => {
+      if (dbProposals.length > 0) {
+        const map = new Map(local.map((p) => [p.id, p]));
+        for (const item of dbProposals) {
+          map.set(item.id, item);
+        }
+        setProposals(Array.from(map.values()));
+      }
+    });
+  }, [user]);
 
   // Line items state inside builder
   const [items, setItems] = React.useState<ProposalLineItem[]>([
@@ -90,7 +110,8 @@ export default function OrganizerProposalsPage() {
         customer_accepted: false,
         updated_at: new Date().toISOString(),
       };
-      setProposals([revised, ...proposals]);
+      saveScopedOrganizerProposal(user, revised);
+      setProposals([revised, ...proposals.filter((p) => p.id !== revised.id)]);
       setActiveProposal(revised);
       alert(`Created and transmitted Proposal Version ${nextVer} to client.`);
     } else {
@@ -98,13 +119,14 @@ export default function OrganizerProposalsPage() {
       const newProp: Proposal = {
         id: `prop-${Date.now()}`,
         inquiry_id: "inq-101",
+        organizer_id: user?.id || "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
         proposal_number: `PROP-2026-V1`,
         version: 1,
-        customer_name: "Vikram & Ananya Sundaram",
-        customer_email: "vikram.sundaram@gmail.com",
+        customer_name: "Sarah Kapoor",
+        customer_email: "sarah.kapoor@example.com",
         event_type: "Grand Wedding & Sangeet",
         event_date: "2026-11-28",
-        venue_location: "Leela Palace, Chennai",
+        venue_location: "Jagmandir Island Palace, Udaipur",
         items,
         subtotal: sub,
         tax_rate: 0.18,
@@ -117,7 +139,8 @@ export default function OrganizerProposalsPage() {
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
-      setProposals([newProp, ...proposals]);
+      saveScopedOrganizerProposal(user, newProp);
+      setProposals([newProp, ...proposals.filter((p) => p.id !== newProp.id)]);
       setActiveProposal(newProp);
       alert("Proposal Version 1 transmitted to client.");
     }

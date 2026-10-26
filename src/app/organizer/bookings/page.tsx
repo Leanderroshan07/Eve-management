@@ -19,13 +19,33 @@ import { OrganizerHeader } from "@/components/organizer/header";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { SEEDED_BOOKINGS, ConfirmedBooking } from "@/lib/organizer-data";
+import { ConfirmedBooking } from "@/lib/organizer-data";
 import { formatINR, formatDate } from "@/lib/format";
 import { motion } from "motion/react";
 import { fadeInUp, staggerContainer } from "@/lib/motion";
+import { useAuth } from "@/lib/supabase/auth-context";
+import { getScopedOrganizerBookings } from "@/lib/user-scoped-data";
+import { fetchLiveBookings } from "@/lib/supabase/db-sync";
 
 export default function OrganizerBookingsPage() {
-  const [bookings, setBookings] = React.useState<ConfirmedBooking[]>(SEEDED_BOOKINGS);
+  const { user } = useAuth();
+  const [bookings, setBookings] = React.useState<ConfirmedBooking[]>([]);
+
+  React.useEffect(() => {
+    const local = getScopedOrganizerBookings(user);
+    setBookings(local);
+
+    const orgId = user?.id || "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11";
+    fetchLiveBookings({ organizerId: orgId }).then((dbBookings) => {
+      if (dbBookings.length > 0) {
+        const map = new Map(local.map((b) => [b.id, b]));
+        for (const item of dbBookings) {
+          map.set(item.id, item);
+        }
+        setBookings(Array.from(map.values()));
+      }
+    });
+  }, [user]);
 
   return (
     <div className="flex-1 flex flex-col">

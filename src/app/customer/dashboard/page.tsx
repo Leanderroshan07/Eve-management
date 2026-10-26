@@ -109,6 +109,7 @@ export default function CustomerDashboardPage() {
     const newInquiry: CustomerInquiry = {
       id: `inq-${Date.now()}`,
       inquiry_number: `INQ-2026-${Math.floor(100 + Math.random() * 900)}`,
+      organizer_id: "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
       customer_name: profileForm.name || user.name || "Client Host",
       customer_email: user.email,
       customer_phone: profileForm.phone || "+91 98000 00000",

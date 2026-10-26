@@ -77,6 +77,7 @@ export interface ProposalLineItem {
 export interface Proposal {
   id: string;
   inquiry_id: string;
+  organizer_id?: string;
   proposal_number: string;
   version: number;
   customer_name: string;
@@ -104,6 +105,7 @@ export interface ConfirmedBooking {
   inquiry_id: string;
   proposal_id: string;
   proposal_version: number;
+  organizer_id?: string;
   customer_name: string;
   customer_phone: string;
   event_type: string;

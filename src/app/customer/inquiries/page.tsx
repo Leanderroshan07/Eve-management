@@ -20,13 +20,28 @@ import { formatINR } from "@/lib/format";
 import { useAuth } from "@/lib/supabase/auth-context";
 import { getScopedCustomerInquiries } from "@/lib/user-scoped-data";
 import { CustomerInquiry } from "@/lib/organizer-data";
+import { fetchLiveCustomerInquiries } from "@/lib/supabase/db-sync";
 
 export default function CustomerInquiriesPage() {
   const { user } = useAuth();
   const [inquiries, setInquiries] = React.useState<CustomerInquiry[]>([]);
 
   React.useEffect(() => {
-    setInquiries(getScopedCustomerInquiries(user));
+    const local = getScopedCustomerInquiries(user);
+    setInquiries(local);
+
+    const email = user?.email || "sarah.kapoor@example.com";
+    fetchLiveCustomerInquiries({ customerEmail: email }).then((dbInquiries) => {
+      if (dbInquiries.length > 0) {
+        const map = new Map(local.map((i) => [i.id, i]));
+        for (const item of dbInquiries) {
+          if (!map.has(item.id)) {
+            map.set(item.id, item);
+          }
+        }
+        setInquiries(Array.from(map.values()));
+      }
+    });
   }, [user]);
 
   return (

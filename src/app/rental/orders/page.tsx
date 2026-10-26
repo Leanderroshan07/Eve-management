@@ -40,6 +40,8 @@ import {
   type RentalOrderStatus,
 } from "@/lib/rental-data";
 
+import { fetchLiveRentalOrders } from "@/lib/supabase/db-sync";
+
 function RentalOrdersContent() {
   const searchParams = useSearchParams();
   const highlightedOrderId = searchParams.get("order");
@@ -68,6 +70,16 @@ function RentalOrdersContent() {
       const found = loaded.find((o) => o.id === highlightedOrderId);
       if (found) setActiveOrderModal(found);
     }
+
+    fetchLiveRentalOrders().then((dbOrders) => {
+      if (dbOrders.length > 0) {
+        const map = new Map(loaded.map((o) => [o.id, o]));
+        for (const item of dbOrders) {
+          map.set(item.id, item);
+        }
+        setOrders(Array.from(map.values()));
+      }
+    });
   }, [highlightedOrderId]);
 
   // Filter orders

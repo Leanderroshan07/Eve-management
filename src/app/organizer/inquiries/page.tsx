@@ -18,15 +18,35 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { SEEDED_INQUIRIES, CustomerInquiry } from "@/lib/organizer-data";
+import { CustomerInquiry } from "@/lib/organizer-data";
 import { formatINR, formatDate } from "@/lib/format";
 import { motion } from "motion/react";
 import { fadeInUp, staggerContainer } from "@/lib/motion";
+import { useAuth } from "@/lib/supabase/auth-context";
+import { getScopedOrganizerInquiries } from "@/lib/user-scoped-data";
+import { fetchLiveCustomerInquiries } from "@/lib/supabase/db-sync";
 
 export default function OrganizerInquiriesPage() {
-  const [inquiries, setInquiries] = React.useState<CustomerInquiry[]>(SEEDED_INQUIRIES);
+  const { user } = useAuth();
+  const [inquiries, setInquiries] = React.useState<CustomerInquiry[]>([]);
   const [statusFilter, setStatusFilter] = React.useState<string>("all");
   const [search, setSearch] = React.useState<string>("");
+
+  React.useEffect(() => {
+    const local = getScopedOrganizerInquiries(user);
+    setInquiries(local);
+
+    const orgId = user?.id || "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11";
+    fetchLiveCustomerInquiries({ organizerId: orgId }).then((dbInquiries) => {
+      if (dbInquiries.length > 0) {
+        const map = new Map(local.map((i) => [i.id, i]));
+        for (const item of dbInquiries) {
+          map.set(item.id, item);
+        }
+        setInquiries(Array.from(map.values()));
+      }
+    });
+  }, [user]);
 
   const filtered = inquiries.filter((inq) => {
     const matchesStatus = statusFilter === "all" || inq.status === statusFilter;

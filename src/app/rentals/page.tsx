@@ -28,7 +28,8 @@ import { Badge } from "@/components/ui/badge";
 import { formatINR, formatDate } from "@/lib/format";
 import { AuthNavControl } from "@/components/shared/auth-nav-control";
 import { createLiveRentalOrder } from "@/lib/supabase/db-sync";
-import { getAllPublicRentals } from "@/lib/user-scoped-data";
+import { getAllPublicRentals, addScopedRentalOrder } from "@/lib/user-scoped-data";
+import { useAuth } from "@/lib/supabase/auth-context";
 import {
   getStoredRentalProducts,
   getStoredRentalProviders,
@@ -39,6 +40,7 @@ import {
 } from "@/lib/rental-data";
 
 export default function PublicRentalsPage() {
+  const { user } = useAuth();
   const [products, setProducts] = React.useState<RentalProduct[]>([]);
   const [providers, setProviders] = React.useState(getStoredRentalProviders());
   const [selectedCategory, setSelectedCategory] = React.useState<string>("all");
@@ -142,31 +144,8 @@ export default function PublicRentalsPage() {
       notes: "White-glove delivery, on-site rigging, and post-event strike requested via public storefront.",
     });
 
-    // Sync order to live Supabase backend
-    createLiveRentalOrder({
-      providerId: selectedProductForQuote.providerId,
-      eventTitle: eventName,
-      venueName: venueName || "Private Luxury Estate",
-      venueCity: venueAddress || "Mumbai",
-      dispatchDate: bookingStartDate,
-      returnDate: bookingEndDate,
-      status: "awaiting_confirmation",
-      lineItems: [
-        {
-          productId: selectedProductForQuote.id,
-          productName: selectedProductForQuote.name,
-          dailyRate: selectedProductForQuote.dailyRate,
-          quantity: bookingQty,
-        },
-      ],
-      totalRentalAmount: baseRentalCost,
-      securityDepositAmount: totalDeposit,
-      logisticsFee: setupFee,
-      customerName: clientName,
-      customerEmail: clientEmail,
-      customerPhone: clientPhone,
-      whiteGloveNotes: "Requested via public storefront",
-    }).catch(console.warn);
+    // Save locally and sync to live Supabase backend
+    addScopedRentalOrder(order, user);
 
     setBookingSuccessOrder(order);
   };
